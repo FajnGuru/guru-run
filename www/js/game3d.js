@@ -1,5 +1,6 @@
 // Guru Run 3D – prototyp (Three.js, offline)
 import * as THREE from 'three';
+import { buildGuru, animateGuru } from './guru-model.js';
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance' });
@@ -53,32 +54,8 @@ const arch = new THREE.Mesh(new THREE.BoxGeometry(7, 9, 8.2), M(0x111111)); arch
 [[-7, 1], [7, 1]].forEach(([x]) => { const sp = new THREE.Mesh(new THREE.ConeGeometry(1, 6, 4), M(0x2b2b2b)); sp.position.set(x, 25, 3); gate.add(sp); });
 gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 
-// --- Guru (procedurální husky dle referencí: bílá srst, bílá košile, džíny, opasek, hnědá čepice s brýlemi) ---
-const fur = M(0xf3f1ee), grey = M(0x9aa0a8), shirt = M(0xfafafa), jeans = M(0x2f4f8f), leather = M(0x6b3e22), dark = M(0x1b1b1b), eye = M(0x2f9a5a), glass = new THREE.MeshStandardMaterial({ color: 0x7fb6c8, metalness: .6, roughness: .2 });
-const mesh = (g, m, x = 0, y = 0, z = 0) => { const k = new THREE.Mesh(g, m); k.position.set(x, y, z); k.castShadow = true; return k; };
-const guru = new THREE.Group(); scene.add(guru);
-const body = new THREE.Group(); guru.add(body);
-body.add(mesh(new THREE.CapsuleGeometry(.42, .55, 4, 10), shirt, 0, 1.45, 0));
-body.add(mesh(new THREE.CylinderGeometry(.44, .44, .1, 14), leather, 0, 1.05, 0));
-body.add(mesh(new THREE.CylinderGeometry(.43, .4, .25, 14), jeans, 0, .93, 0));
-const head = new THREE.Group(); head.position.y = 2.25; body.add(head);
-head.add(mesh(new THREE.SphereGeometry(.45, 16, 12), fur));
-const crown = mesh(new THREE.SphereGeometry(.46, 16, 10, 0, Math.PI * 2, 0, 1.3), grey, 0, .02, 0); crown.rotation.x = .25; head.add(crown);
-const snout = mesh(new THREE.SphereGeometry(.22, 12, 10), fur, 0, -.1, .38); snout.scale.set(1, .8, 1.3); head.add(snout);
-head.add(mesh(new THREE.SphereGeometry(.08, 10, 8), dark, 0, -.04, .65));
-[-1, 1].forEach(s => {
-  head.add(mesh(new THREE.SphereGeometry(.06, 8, 8), eye, s * .16, .08, .38));
-  const ear = mesh(new THREE.ConeGeometry(.13, .35, 4), grey, s * .28, .5, -.02); ear.rotation.z = -s * .25; head.add(ear);
-  const flap = mesh(new THREE.BoxGeometry(.12, .45, .22), leather, s * .43, -.15, 0); head.add(flap);
-  const g = mesh(new THREE.CylinderGeometry(.11, .11, .07, 12), glass, s * .14, .38, .3); g.rotation.x = Math.PI / 2 - .6; head.add(g);
-});
-const cap = mesh(new THREE.SphereGeometry(.48, 16, 10, 0, Math.PI * 2, 0, 1.45), leather, 0, .05, -.03); head.add(cap);
-const strap = mesh(new THREE.TorusGeometry(.47, .03, 6, 24), dark, 0, .3, 0); strap.rotation.x = Math.PI / 2 - .5; head.add(strap);
-const limb = (len, r, m, endM, endR) => { const g = new THREE.Group(); g.add(mesh(new THREE.CapsuleGeometry(r, len, 4, 8), m, 0, -len / 2 - r, 0)); g.add(mesh(new THREE.SphereGeometry(endR, 10, 8), endM, 0, -len - r * 2, endM === fur ? .08 : 0)); return g; };
-const arms = [-1, 1].map(s => { const a = limb(.5, .13, shirt, fur, .15); a.position.set(s * .55, 1.8, 0); a.rotation.z = s * .12; body.add(a); return a; });
-const legs = [-1, 1].map(s => { const l = limb(.45, .16, jeans, fur, .19); l.children[1].scale.set(1, .7, 1.4); l.position.set(s * .2, .85, 0); body.add(l); return l; });
-const tail = new THREE.Group(); tail.position.set(0, 1.05, -.4); body.add(tail);
-const tm = mesh(new THREE.SphereGeometry(.22, 12, 10), fur, 0, .1, -.25); tm.scale.set(1, 1.4, 1); tail.add(tm);
+// --- Guru (model v guru-model.js) ---
+const G = buildGuru(); const guru = G.root; guru.scale.setScalar(1); scene.add(guru);
 
 // --- ovládání ---
 const keys = {}; addEventListener('keydown', e => keys[e.code] = true); addEventListener('keyup', e => keys[e.code] = false);
@@ -110,15 +87,7 @@ function tick(now) {
   guru.position.x += -Math.sin(heading) * speed * dt; guru.position.z += -Math.cos(heading) * speed * dt;
   guru.position.x = THREE.MathUtils.clamp(guru.position.x, -HALF_W - 3.2, HALF_W + 3.2);
   guru.position.z = THREE.MathUtils.clamp(guru.position.z, -LEN + 2, 8);
-  // animace
-  const a = Math.abs(speed); phase += dt * (3 + a * 1.6);
-  const sw = Math.min(1, a / 4) * (running ? .9 : .6);
-  legs[0].rotation.x = Math.sin(phase) * sw; legs[1].rotation.x = -Math.sin(phase) * sw;
-  arms[0].rotation.x = -Math.sin(phase) * sw; arms[1].rotation.x = Math.sin(phase) * sw;
-  body.position.y = Math.abs(Math.sin(phase)) * .08 * Math.min(1, a / 3);
-  body.rotation.x = THREE.MathUtils.lerp(body.rotation.x, a > 5 ? .18 : 0, dt * 6);
-  tail.rotation.y = Math.sin(now / 120) * .6; tail.rotation.x = -.5;
-  head.rotation.y = Math.sin(now / 900) * .1 * (a < .5);
+  animateGuru(G, { dt, now }, speed, running);
   // kamera za Guruem
   const back = new THREE.Vector3(Math.sin(heading) * 6.5, 3.6, Math.cos(heading) * 6.5);
   camPos.lerp(tmp.copy(guru.position).add(back), 1 - Math.pow(.02, dt));
