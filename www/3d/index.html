@@ -9,11 +9,11 @@
 #knob{position:absolute;left:40px;top:40px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.6)}
 #run{position:absolute;right:28px;bottom:30px;width:96px;height:96px;border-radius:50%;background:rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.5);color:#fff;font-weight:bold;font-size:20px;display:flex;align-items:center;justify-content:center}
 #run.on{background:rgba(255,210,74,.6)}
-#hud{position:absolute;left:12px;top:8px;color:#fff;text-shadow:0 1px 3px #000;font-weight:bold}#hud a{color:#ffd24a}
+#hud{position:absolute;left:12px;top:8px;color:#fff;text-shadow:0 1px 3px #000;font-weight:bold}#hud{font-size:20px}#hud a{color:#ffd24a;font-size:14px}#toast{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);color:#ffd24a;font:bold 30px sans-serif;text-shadow:0 2px 4px #000;opacity:0;transition:opacity .3s,transform .6s;pointer-events:none}#toast.on{opacity:1;transform:translate(-50%,-90%)}
 #rotate{display:none;position:fixed;inset:0;background:#1b2a3a;color:#fff;font-size:20px;align-items:center;justify-content:center;z-index:9}
 @media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}</style></head>
 <body><div id="rotate">Otoč telefon na šířku 🐺📱</div>
-<div id="wrap"><div id="stage"><div id="hud">Guru Run 3D · Celetná · <a href="../">menu</a></div>
+<div id="wrap"><div id="stage"><div id="hud"><span id="bones">🦴 0</span> &nbsp; <span id="lives">❤ 3</span> &nbsp;·&nbsp; <a href="../">menu</a></div><div id="toast"></div>
 <div id="joy"><div id="knob"></div></div><div id="run">Běh</div></div></div>
 <script type="importmap">{"imports":{"three":"../assets/vendor/three.module.min.js"}}</script>
 <script type="module" src="../js/game3d.js"></script></body></html>

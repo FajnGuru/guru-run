@@ -57,6 +57,47 @@ gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 // --- Guru (model v guru-model.js) ---
 const G = buildGuru(); const guru = G.root; guru.scale.setScalar(1); scene.add(guru);
 
+// --- kostičky (InstancedMesh) ---
+function mergeGeo(list) { const pos = [], nor = []; for (const g0 of list) { const g = g0.toNonIndexed(); pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); return g; }
+const boneParts = [new THREE.CapsuleGeometry(.07, .42, 3, 8).rotateZ(Math.PI / 2)];
+for (const x of [-.27, .27]) for (const y of [-.07, .07]) boneParts.push(new THREE.SphereGeometry(.09, 10, 8).translate(x, y, 0));
+const boneMat = new THREE.MeshStandardMaterial({ color: 0xfffbea, emissive: 0xffe9a0, emissiveIntensity: .45, roughness: .5 });
+const bonePts = [];
+const addB = (x, z, y = .9) => bonePts.push({ x, y, z, alive: true, t: 0 });
+for (let z = -4, k = 0; z > -LEN + 6; z -= 1.6, k++) {
+  const seg = Math.floor(k / 10) % 4, i = k % 10;
+  if (seg === 0) addB(0, z);                                   // řada
+  else if (seg === 1) addB(Math.sin(i / 9 * Math.PI * 2) * 3, z); // vlna
+  else if (seg === 2) addB(i % 2 ? 2.5 : -2.5, z);             // cikcak
+  else addB(-3, z, .9 + Math.sin(i / 9 * Math.PI) * 1.2), addB(3, z, .9 + Math.sin(i / 9 * Math.PI) * 1.2); // oblouky
+}
+const bonesM = new THREE.InstancedMesh(mergeGeo(boneParts), boneMat, bonePts.length); bonesM.castShadow = true; scene.add(bonesM);
+const sparkG = new THREE.BufferGeometry(), SP = 60, spPos = new Float32Array(SP * 3), spVel = []; let spLife = new Float32Array(SP);
+sparkG.setAttribute('position', new THREE.BufferAttribute(spPos, 3));
+const sparks = new THREE.Points(sparkG, new THREE.PointsMaterial({ color: 0xffe066, size: .12, transparent: true, opacity: .9 })); sparks.frustumCulled = false; scene.add(sparks);
+for (let i = 0; i < SP; i++) { spVel.push(new THREE.Vector3()); spPos[i * 3 + 1] = -99; }
+let spNext = 0;
+function burst(p) { for (let n = 0; n < 12; n++) { const i = spNext++ % SP; spPos.set([p.x, p.y, p.z], i * 3); spVel[i].set(Math.random() - .5, Math.random() * .8 + .3, Math.random() - .5).multiplyScalar(5); spLife[i] = .5; } }
+let bones = 0, lives = 3, actx = null;
+const elB = document.getElementById('bones'), elL = document.getElementById('lives'), toast = document.getElementById('toast');
+function beep() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(880, actx.currentTime); o.frequency.exponentialRampToValueAtTime(1760, actx.currentTime + .08); g.gain.setValueAtTime(.06, actx.currentTime); g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + .15); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + .16); } catch (e) {} }
+function showToast(t) { toast.textContent = t; toast.classList.add('on'); clearTimeout(showToast.h); showToast.h = setTimeout(() => toast.classList.remove('on'), 1300); }
+function collect(b) { b.alive = false; b.t = .25; bones++; burst(b); beep(); if (navigator.vibrate) navigator.vibrate(15); if (bones % 100 === 0) { lives++; showToast('+1 život!'); if (navigator.vibrate) navigator.vibrate([40, 40, 80]); } elB.textContent = '🦴 ' + bones; elL.textContent = '❤ ' + lives; }
+const bo = new THREE.Object3D();
+function updateBones(dt, now) {
+  const gp = guru.position;
+  bonePts.forEach((b, i) => {
+    let s = 1;
+    if (b.alive) { const dx = b.x - gp.x, dz = b.z - gp.z, dy = b.y - (gp.y + 1); if (dx * dx + dz * dz < 1.1 && Math.abs(dy) < 1.6) collect(b); }
+    else if (b.t > 0) { b.t -= dt; s = 1 + (.25 - b.t) * 6; s *= Math.max(0, b.t / .25); } else s = 0;
+    bo.position.set(b.x, b.y + Math.sin(now / 400 + i) * .12 + (b.alive ? 0 : (.25 - b.t) * 3), b.z); bo.rotation.set(0, now / 600 + i, .3); bo.scale.setScalar(s); bo.updateMatrix(); bonesM.setMatrixAt(i, bo.matrix);
+  });
+  bonesM.instanceMatrix.needsUpdate = true;
+  for (let i = 0; i < SP; i++) if (spLife[i] > 0) { spLife[i] -= dt; spVel[i].y -= 9 * dt; spPos[i * 3] += spVel[i].x * dt; spPos[i * 3 + 1] += spVel[i].y * dt; spPos[i * 3 + 2] += spVel[i].z * dt; if (spLife[i] <= 0) spPos[i * 3 + 1] = -99; }
+  sparkG.attributes.position.needsUpdate = true;
+}
+window.__bones = () => ({ bones, lives, total: bonePts.length });
+
 // --- ovládání ---
 const keys = {}; addEventListener('keydown', e => keys[e.code] = true); addEventListener('keyup', e => keys[e.code] = false);
 const joy = document.getElementById('joy'), knob = document.getElementById('knob'), runB = document.getElementById('run');
@@ -87,6 +128,7 @@ function tick(now) {
   guru.position.x += -Math.sin(heading) * speed * dt; guru.position.z += -Math.cos(heading) * speed * dt;
   guru.position.x = THREE.MathUtils.clamp(guru.position.x, -HALF_W - 3.2, HALF_W + 3.2);
   guru.position.z = THREE.MathUtils.clamp(guru.position.z, -LEN + 2, 8);
+  updateBones(dt, now);
   animateGuru(G, { dt, now }, speed, running);
   // kamera za Guruem
   const back = new THREE.Vector3(Math.sin(heading) * 6.5, 3.6, Math.cos(heading) * 6.5);
