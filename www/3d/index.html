@@ -17,7 +17,7 @@
 #rotate{display:none;position:fixed;inset:0;background:#1b2a3a;color:#fff;font-size:20px;align-items:center;justify-content:center;z-index:9}
 @media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}</style></head>
 <body><div id="rotate">Otoč telefon na šířku 🐺📱</div>
-<div id="wrap"><div id="stage"><div id="hud"><span id="bones">🦴 0</span> &nbsp; <span id="lives">❤ 3</span> &nbsp;·&nbsp; <a href="../">menu</a></div><div id="toast"></div><div id="bubble"></div><div id="compass">➤</div>
-<div id="joy"><div id="knob"></div></div><div id="run">Běh</div><div id="jump">Skok</div><div id="over"><h2 id="ovT"></h2><p id="ovS"></p><button onclick="location.reload()">↻ Hrát znovu</button></div></div></div>
+<div id="wrap"><div id="stage"><div id="hud"><span id="bones">🦴 0</span> &nbsp; <span id="lives">❤ 3</span> <span id="timer"></span> &nbsp;·&nbsp; <a href="../">menu</a></div><div id="toast"></div><div id="bubble"></div><div id="compass">➤</div>
+<div id="joy"><div id="knob"></div></div><div id="run">Běh</div><div id="jump">Skok</div><div id="over"><h2 id="ovT"></h2><p id="ovS"></p><div><button onclick="location.reload()">↻ Hrát znovu</button> <button id="l2btn" style="display:none;background:#c0282d" onclick="location.href='?level=2'">Level 2 ▶</button></div></div></div></div>
 <script type="importmap">{"imports":{"three":"../assets/vendor/three.module.min.js"}}</script>
 <script type="module" src="../js/game3d.js"></script></body></html>

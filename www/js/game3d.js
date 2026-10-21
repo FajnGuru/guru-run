@@ -4,6 +4,8 @@ import { buildGuru, animateGuru } from './guru-model.js';
 import { buildFiskule } from './fiskule-model.js';
 import { buildBird, flap } from './bird-model.js';
 import { buildSiki } from './siki-model.js';
+import { buildMotorbike } from './motorbike-model.js';
+const LEVEL = new URLSearchParams(location.search).get('level') === '2' ? 2 : 1;
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance' });
@@ -23,8 +25,8 @@ const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 });
 // --- ulice ---
 const LEN = 800, HALF_W = 5, WALK_X = HALF_W + 3.2;
 // díry: z začátek (blíž startu), délka – rostoucí obtížnost
-const HOLES = [[-60, 2.4], [-130, 2.8], [-200, 3.2], [-270, 3.6], [-340, 3.6], [-410, 4.0], [-480, 4.2], [-550, 4.4], [-620, 4.6], [-690, 4.8]].map(([z, l]) => ({ z0: z, z1: z - l }));
-const CHECKS = [0, -120, -260, -400, -540, -680];
+const HOLES = LEVEL === 2 ? [] : [[-60, 2.4], [-130, 2.8], [-200, 3.2], [-270, 3.6], [-340, 3.6], [-410, 4.0], [-480, 4.2], [-550, 4.4], [-620, 4.6], [-690, 4.8]].map(([z, l]) => ({ z0: z, z1: z - l }));
+const CHECKS = LEVEL === 2 ? [0] : [0, -120, -260, -400, -540, -680];
 const cv = document.createElement('canvas'); cv.width = cv.height = 256; const cx = cv.getContext('2d');
 cx.fillStyle = '#4c4f55'; cx.fillRect(0, 0, 256, 256);
 for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { cx.fillStyle = `hsl(220,4%,${38 + Math.random() * 14}%)`; cx.beginPath(); cx.roundRect(x * 32 + (y % 2) * 16 + 2, y * 32 + 2, 28, 28, 6); cx.fill(); }
@@ -73,23 +75,23 @@ const arch = new THREE.Mesh(new THREE.BoxGeometry(7, 9, 8.2), M(0x111111)); arch
 gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 
 // --- Guru (model v guru-model.js) ---
-const G = buildGuru(); const guru = G.root; guru.scale.setScalar(1); scene.add(guru);
+const G = buildGuru(); let guru = G.root; guru.scale.setScalar(1); scene.add(guru);
 
 // --- Fiškule (parťačka) ---
 const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visible = false; scene.add(fis);
-let fState = 'idle', fVy = 0, fT = 0, fSpeed = 0;
+let fState = LEVEL === 2 ? 'npc' : 'idle', fVy = 0, fT = 0, fSpeed = 0;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
 addEventListener('keydown', () => { if (cut) { cutSkip = true; sikiTap(); } });
 addEventListener('pointerdown', () => { if (cut) { cutSkip = true; sikiTap(); } });
 // --- SIKI u Prašné brány ---
 const K = buildSiki(); const siki = K.root; siki.scale.setScalar(1.15); siki.position.set(0, 0, -LEN + 4); scene.add(siki);
-let sState = 'idle', sT = 0, sLine = -1, sLineT = 0, sFromZ = 0, sToZ = 0;
+let sState = LEVEL === 2 ? 'npc' : 'idle', sT = 0, sLine = -1, sLineT = 0, sFromZ = 0, sToZ = 0;
 const sikiLines = () => ['Ahoj Guru! Já jsem SIKI. 🦘', 'Doběhl jsi až k Prašné bráně – klobouk dolů!', `Sesbíral jsi ${bones} ${bones === 1 ? 'kostičku' : bones >= 2 && bones <= 4 ? 'kostičky' : 'kostiček'}. Příště tě čeká další level!`];
 function say(t) { try { if (!('speechSynthesis' in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t.replace(/[🦘]/g, '')); u.lang = 'cs-CZ'; u.rate = 1.0; speechSynthesis.speak(u); } catch (e) {} }
 function showLine(i, speak) { sLine = i; sLineT = 0; const t = sikiLines()[i]; bubble.innerHTML = '<b>SIKI:</b> ' + t + '<small>ťukni pro pokračování</small>'; bubble.classList.add('on'); if (speak) say(t); }
 function sikiTap() { if (sState !== 'cut' || sLine < 0 || sLineT < .4) return; if (sLine < 2) showLine(sLine + 1, true); else finishSiki(); }
-function finishSiki() { sState = 'done'; cut = false; bubble.classList.remove('on'); endScreen('Cíl! Guru doběhl k Prašné bráně 🏁'); }
+function finishSiki() { sState = 'done'; cut = false; bubble.classList.remove('on'); endScreen('Cíl! Guru doběhl k Prašné bráně 🏁', true); }
 function updateSiki(dt, now) {
   const gp = guru.position;
   if (sState === 'idle') {
@@ -145,7 +147,7 @@ let bones = 0, lives = 3, actx = null;
 const elB = document.getElementById('bones'), elL = document.getElementById('lives'), toast = document.getElementById('toast');
 function beep() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(880, actx.currentTime); o.frequency.exponentialRampToValueAtTime(1760, actx.currentTime + .08); g.gain.setValueAtTime(.06, actx.currentTime); g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + .15); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + .16); } catch (e) {} }
 function showToast(t) { toast.textContent = t; toast.classList.add('on'); clearTimeout(showToast.h); showToast.h = setTimeout(() => toast.classList.remove('on'), 1300); }
-function collect(b) { b.alive = false; b.t = .25; bones++; burst(b); beep(); if (navigator.vibrate) navigator.vibrate(15); if (bones % 100 === 0) { lives++; showToast('+1 život!'); if (navigator.vibrate) navigator.vibrate([40, 40, 80]); } elB.textContent = '🦴 ' + bones; elL.textContent = '❤ ' + lives; }
+function collect(b) { b.alive = false; b.t = .25; bones++; burst(b); beep(); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(15); if (bones % 100 === 0) { lives++; showToast('+1 život!'); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([40, 40, 80]); } elB.textContent = '🦴 ' + bones; elL.textContent = '❤ ' + lives; }
 const bo = new THREE.Object3D();
 function updateBones(dt, now) {
   const gp = guru.position;
@@ -170,12 +172,15 @@ joy.addEventListener('pointerdown', e => { jid = e.pointerId; joy.setPointerCapt
 joy.addEventListener('pointermove', e => e.pointerId === jid && jmove(e));
 const jend = e => { if (e.pointerId !== jid) return; jid = null; jx = jy = 0; knob.style.transform = ''; };
 joy.addEventListener('pointerup', jend); joy.addEventListener('pointercancel', jend);
-runB.addEventListener('pointerdown', () => { runTouch = !runTouch; runB.classList.toggle('on', runTouch); });
+runB.addEventListener('pointerdown', e => { if (LEVEL === 2) { runTouch = true; runB.classList.add('on'); runB.setPointerCapture(e.pointerId); return; } runTouch = !runTouch; runB.classList.toggle('on', runTouch); });
+['pointerup', 'pointercancel'].forEach(t => runB.addEventListener(t, () => { if (LEVEL === 2) { runTouch = false; runB.classList.remove('on'); } }));
+if (LEVEL === 2) runB.textContent = 'Plyn';
 const jumpB = document.getElementById('jump'); let jumpTouch = false;
 jumpB.addEventListener('pointerdown', e => { jumpTouch = true; jumpB.classList.add('on'); jumpB.setPointerCapture(e.pointerId); });
 ['pointerup', 'pointercancel'].forEach(t => jumpB.addEventListener(t, () => { jumpTouch = false; jumpB.classList.remove('on'); }));
 const over = document.getElementById('over');
-function endScreen(title) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = `Kostičky: ${bones} / ${bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; over.classList.add('on'); }
+function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; over.classList.add('on'); }
+let raceT = 0; const fmtT = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor(t * 10 % 10)}`;
 
 // --- smyčka ---
 let heading = 0, speed = 0, phase = 0, last = performance.now(), vy = 0, grounded = true, coyote = 0, buffer = 0, jumpHeld = false, falling = false, done = false, checkpoint = 0, squash = 0;
@@ -186,12 +191,13 @@ function resize() { const v = window.visualViewport; if (v) { wrap.style.width =
 addEventListener('resize', resize); visualViewport && visualViewport.addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 300)); resize();
 function updateFiskule(dt, now) {
   const gp = guru.position;
+  if (fState === 'npc') return;
   if (fState === 'idle') { if (gp.z < -350) { fState = 'approach'; fis.visible = true; fis.position.set(1.2, 0, gp.z - 38); fis.rotation.y = 0; } return; }
   if (fState === 'approach') {
     const dz = gp.z - fis.position.z, dx = gp.x - fis.position.x, d = Math.hypot(dx, dz);
     fis.rotation.y = Math.atan2(dx, dz); fis.position.x += dx / d * 6 * dt; fis.position.z += dz / d * 6 * dt;
     fJump(dt, dx / d, dz / d); animateGuru(F, { dt, now }, fis.position.y > 0 ? 0 : 6, true); holdCompass();
-    if (d < 4.5) { fState = 'cut'; cut = true; cutSkip = false; fT = 0; fis.position.y = 0; bubble.innerHTML = 'Ahoj Guru! 🐰 Jsem Fiškule.<br>Kompas ukazuje k Prašné bráně – pojď!<small>ťukni nebo stiskni klávesu</small>'; bubble.classList.add('on'); if (navigator.vibrate) navigator.vibrate(30); }
+    if (d < 4.5) { fState = 'cut'; cut = true; cutSkip = false; fT = 0; fis.position.y = 0; bubble.innerHTML = 'Ahoj Guru! 🐰 Jsem Fiškule.<br>Kompas ukazuje k Prašné bráně – pojď!<small>ťukni nebo stiskni klávesu</small>'; bubble.classList.add('on'); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(30); }
     return;
   }
   if (fState === 'cut') {
@@ -237,14 +243,14 @@ let birdTimer = 4, invul = 0;
 const S0 = new THREE.Vector3(), T0 = new THREE.Vector3(), E0 = new THREE.Vector3(), V0 = new THREE.Vector3();
 function squawk() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime; o.type = 'sawtooth'; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(380, t + .25); g.gain.setValueAtTime(.05, t); g.gain.exponentialRampToValueAtTime(.001, t + .3); o.connect(g).connect(actx.destination); o.start(); o.stop(t + .32); } catch (e) {} }
 function startDive(b) {
-  const gp = guru.position; b.state = 'tele'; b.t = 0; b.T = new THREE.Vector3(gp.x, .9, gp.z);
+  const gp = guru.position; b.state = 'tele'; b.t = 0; b.T = new THREE.Vector3(gp.x, .9, gp.z); if (LEVEL === 2) { b.T.x += -Math.sin(heading) * speed * 1.75; b.T.z += -Math.cos(heading) * speed * 1.75; b.T.x = THREE.MathUtils.clamp(b.T.x, -WALK_X, WALK_X); }
   b.mark.position.set(gp.x, .04, gp.z); b.mark.visible = true; squawk();
 }
 window.__forceDive = () => { const b = birds.find(b => b.state === 'circle' || b.state === 'off'); if (!b) return false; if (b.state === 'off') { b.state = 'circle'; b.root.visible = true; } placeCircle(b, 0); startDive(b); return true; };
-function placeCircle(b, now) { const gp = guru.position; b.a += .016; b.root.position.set(Math.sin(b.a) * 5, 6.5 + Math.sin(b.a * 2) * .6, gp.z - 12 + Math.cos(b.a) * 5); b.root.rotation.y = b.a + Math.PI / 2; }
+function placeCircle(b, now) { const gp = guru.position; b.a += .016; b.root.position.set(Math.sin(b.a) * 5, 6.5 + Math.sin(b.a * 2) * .6, gp.z + (LEVEL === 2 ? 22 : -12) + Math.cos(b.a) * 5); b.root.rotation.y = b.a + Math.PI / 2; }
 function updateBirds(dt, now) {
   const gp = guru.position, prog = Math.min(1, Math.max(0, (-gp.z - 120) / (LEN - 120)));
-  const active = gp.z < -120 && gp.z > -LEN + 30 && !cut && fState !== 'cut' && !done;
+  const active = (LEVEL === 2 ? gp.z > -LEN + 60 && gp.z < -40 : gp.z < -120 && gp.z > -LEN + 30) && !cut && fState !== 'cut' && !done;
   birds.forEach((b, i) => { if (i < 2 + Math.round(prog * 2) && active && b.state === 'off') { b.state = 'circle'; b.root.visible = true; } });
   const attacking = birds.filter(b => b.state === 'tele' || b.state === 'dive').length;
   birdTimer -= dt; if (window.__noAuto) birdTimer = 99;
@@ -274,7 +280,7 @@ function updateBirds(dt, now) {
   }
 }
 function birdHit(b, prev) {
-  lives--; elL.textContent = '❤ ' + Math.max(0, lives); invul = 1.6; if (navigator.vibrate) navigator.vibrate([60, 30, 120]); squawk();
+  lives--; elL.textContent = '❤ ' + Math.max(0, lives); invul = 1.6; if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([60, 30, 120]); squawk();
   const k = V0.copy(b.root.position).sub(prev); k.y = 0; k.normalize(); knock.copy(k).multiplyScalar(7); vy = 5; grounded = false; showToast('Au! -1 život');
   if (lives <= 0) endScreen('Konec hry – holubi vyhráli');
 }
@@ -309,7 +315,7 @@ function tick(now) {
   else { if (grounded) coyote = .12; grounded = false; if (overPit && guru.position.y < -.3) falling = true; }
   if (falling) { guru.position.z = THREE.MathUtils.clamp(guru.position.z, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z1 + .4 ?? -1e9, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z0 - .4 ?? 1e9); }
   if (guru.position.y < -6 && !done) {
-    lives--; elL.textContent = '❤ ' + Math.max(0, lives); if (navigator.vibrate) navigator.vibrate([80, 40, 120]);
+    lives--; elL.textContent = '❤ ' + Math.max(0, lives); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([80, 40, 120]);
     if (lives <= 0) endScreen('Konec hry'); else { showToast('-1 život'); guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; camPos.set(0, 4, checkpoint + 8); }
   }
   for (const c of CHECKS) if (guru.position.z < c - 1 && c < checkpoint && grounded) { checkpoint = c; showToast('Checkpoint ✔'); }
@@ -332,5 +338,102 @@ function tick(now) {
   renderer.render(scene, camera); requestAnimationFrame(tick);
   window.__st = { x: guru.position.x, y: guru.position.y, z: guru.position.z, lives, grounded, falling, checkpoint, done };
 }
-requestAnimationFrame(tick);
+if (LEVEL === 1) requestAnimationFrame(tick);
 window.__guru = guru;
+
+// ================= LEVEL 2: SIKI na motorce =================
+let B = null, obs = [], wobble = 0, finishT = -1, eng = null;
+function startLevel2() {
+  flags.forEach(f => f.parent.visible = false); siki.visible = false;
+  B = buildMotorbike(); scene.add(B.root); guru = B.root;
+  guru.position.set(0, 0, -LEN + 14); heading = Math.PI; camPos.set(0, 4, -LEN + 5);
+  G.root.position.set(-1.8, 0, 3); G.root.rotation.y = Math.PI; fis.visible = true; fis.position.set(1.8, 0, 3); fis.rotation.y = Math.PI;
+  document.querySelector('#hud').firstChild.textContent = '';
+  buildObstacles();
+  bonePts.forEach(b => { if (obs.some(o => Math.abs(b.x - o.x) < o.hw + .3 && Math.abs(b.z - o.z) < o.hd + .3)) { b.alive = false; b.t = 0; } });
+  showToast('Level 2: SIKI jede zpátky na start! 🏍️');
+  requestAnimationFrame(tick2);
+}
+function stripeTex(a, b) { const c = document.createElement('canvas'); c.width = 128; c.height = 32; const x = c.getContext('2d'); x.fillStyle = a; x.fillRect(0, 0, 128, 32); x.fillStyle = b; for (let i = -2; i < 9; i++) { x.beginPath(); x.moveTo(i * 16, 32); x.lineTo(i * 16 + 8, 32); x.lineTo(i * 16 + 24, 0); x.lineTo(i * 16 + 16, 0); x.fill(); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function buildObstacles() {
+  const W = WALK_X - .4, list = { cone: [], barrel: [], barrier: [], stall: [], sign: [] };
+  const add = (type, x, z) => { const d = { cone: [.3, .3, .75], barrel: [.38, .38, 1], barrier: [1.2, .2, 1], stall: [1.4, .9, 2.3], sign: [.35, .2, 2.4] }[type]; obs.push({ type, x, z, hw: d[0], hd: d[1], h: d[2] }); list[type].push([x, z]); };
+  let z = -LEN + 45, k = 0;
+  while (z < -25) {
+    const prog = (z + LEN) / LEN, side = k % 2 ? 1 : -1, pat = k % 5;
+    if (pat === 0) { // stěna sudů a kuželů s mezerou na střídavé straně
+      const gx = side * (W - 2.2); for (let x = -W; x <= W; x += 1.15) if (Math.abs(x - gx) > 1.9) add((Math.round(x) % 2 ? 'barrel' : 'cone'), x, z);
+    } else if (pat === 1) { // slalom kuželů
+      for (let i = 0; i < 4; i++) { const sd = (i % 2 ? 1 : -1) * side; for (let x = 0; x <= W; x += .9) add('cone', sd * (x - .6), z + i * 7); } z += 21;
+    } else if (pat === 2) { // tržní stánek + bariéry, mezera na druhé straně
+      add('stall', side * (W - 1.4), z); add('barrier', side * (W - 4.2), z); add('barrier', side * (W - 6.6), z); add('sign', -side * (W - .5), z + 3);
+    } else if (pat === 3) { // silniční práce – bariéry cik-cak
+      add('barrier', -W + 1.2, z); add('barrier', -W + 3.6, z); add('barrier', -W + 6, z); add('barrel', W - 3.4, z + .2);
+      add('barrier', W - 1.2, z + 8); add('barrier', W - 3.6, z + 8); add('barrier', W - 6, z + 8); add('barrel', -W + 3.4, z + 8.2); z += 8;
+    } else { // sudy ve dvou řadách se středovou mezerou
+      for (let x = 2; x <= W; x += 1.2) { add('barrel', x, z); add('barrel', -x, z + 5); } add('sign', 0, z + 10); z += 10;
+    }
+    z += THREE.MathUtils.lerp(32, 15, prog); k++;
+  }
+  const o3 = new THREE.Object3D();
+  const inst = (geo, mat, arr, y, sx = 1) => { if (!arr.length) return; const m = new THREE.InstancedMesh(geo, mat, arr.length); arr.forEach(([x, z], i) => { o3.position.set(x, y, z); o3.rotation.set(0, 0, 0); o3.scale.setScalar(sx); o3.updateMatrix(); m.setMatrixAt(i, o3.matrix); }); m.castShadow = true; scene.add(m); };
+  inst(new THREE.ConeGeometry(.28, .75, 12), M(0xff6a13), list.cone, .375);
+  inst(new THREE.CylinderGeometry(.29, .29, .12, 12), M(0xffffff), list.cone, .4, 1);
+  inst(new THREE.CylinderGeometry(.36, .36, .95, 14), M(0x2f5fa8), list.barrel, .475);
+  inst(new THREE.TorusGeometry(.36, .03, 6, 16).rotateX(Math.PI / 2), M(0xdddddd), list.barrel, .7);
+  inst(new THREE.BoxGeometry(2.4, .35, .15), new THREE.MeshStandardMaterial({ map: stripeTex('#d62828', '#ffffff') }), list.barrier, .75);
+  inst(new THREE.BoxGeometry(.1, .75, .3), M(0x444444), list.barrier, .38);
+  inst(new THREE.BoxGeometry(2.6, 1.1, 1.6), M(0x9a6b3e), list.stall, .55);
+  inst(new THREE.BoxGeometry(2.9, .12, 1.9), new THREE.MeshStandardMaterial({ map: stripeTex('#2e7d32', '#f5f0e0') }), list.stall, 2.2);
+  inst(new THREE.CylinderGeometry(.05, .05, 2.2, 6), M(0x777777), list.stall.map(([x, z]) => [x - 1.3, z + .8]), 1.1); inst(new THREE.CylinderGeometry(.05, .05, 2.2, 6), M(0x777777), list.stall.map(([x, z]) => [x + 1.3, z + .8]), 1.1);
+  inst(new THREE.CylinderGeometry(.05, .05, 2.4, 6), M(0x555555), list.sign, 1.2);
+  inst(new THREE.BoxGeometry(.6, .45, .05), M(0xf2c200), list.sign, 2.2);
+  inst(new THREE.BoxGeometry(.4, .14, .06), M(0xc0282d), list.sign, 2.25);
+}
+function engineSound() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); if (eng) return; const o = actx.createOscillator(), o2 = actx.createOscillator(), f = actx.createBiquadFilter(), g = actx.createGain(); o.type = 'sawtooth'; o2.type = 'square'; f.type = 'lowpass'; f.frequency.value = 600; g.gain.value = .035; o.connect(f); o2.connect(f); f.connect(g).connect(actx.destination); o.start(); o2.start(); eng = { o, o2, g }; } catch (e) {} }
+addEventListener('pointerdown', () => { if (LEVEL === 2) engineSound(); }); addEventListener('keydown', () => { if (LEVEL === 2) engineSound(); });
+function hitObs(o) {
+  lives--; elL.textContent = '❤ ' + Math.max(0, lives); invul = 1.6; wobble = 1; speed *= .3; if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([70, 30, 120]); showToast('Bum! -1 život');
+  guru.position.x += Math.sign(guru.position.x - o.x || 1) * .5; if (lives <= 0) endScreen('Konec hry – SIKI to nedal');
+}
+let hopHeld = false;
+function tick2(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (done) { if (eng) eng.g.gain.value = 0; renderer.render(scene, camera); return requestAnimationFrame(tick2); }
+  const gp = guru.position;
+  if (finishT < 0) raceT += dt; document.getElementById('timer').textContent = '⏱ ' + fmtT(raceT);
+  const thr = finishT < 0 && (keys.KeyW || keys.ArrowUp || runTouch || jy < -.4), brk = keys.KeyS || keys.ArrowDown || jy > .5 || finishT >= 0;
+  let turn = THREE.MathUtils.clamp((keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - jx, -1, 1); if (Math.abs(turn) < .12) turn = 0;
+  speed += (thr ? 10 : brk ? -16 : -3) * dt; speed = THREE.MathUtils.clamp(speed, 0, 22);
+  heading += turn * 1.7 * dt * Math.min(1, speed / 5 + .2);
+  if (!turn) heading += (Math.PI - heading) * Math.min(1, dt * 1.2); // samostředění
+  heading = THREE.MathUtils.clamp(heading, Math.PI - .7, Math.PI + .7);
+  gp.x += -Math.sin(heading) * speed * dt; gp.z += -Math.cos(heading) * speed * dt;
+  gp.x = THREE.MathUtils.clamp(gp.x, -WALK_X + .3, WALK_X - .3); gp.z = Math.min(gp.z, 6);
+  const jp = keys.Space || jumpTouch; if (jp && !hopHeld && grounded) { vy = 6.5; grounded = false; } hopHeld = jp;
+  vy -= GRAV * dt; gp.y += vy * dt; if (gp.y <= 0) { if (!grounded) B.bob.position.y = -.08; gp.y = 0; vy = 0; grounded = true; }
+  if (knock.lengthSq() > .01) { gp.x = THREE.MathUtils.clamp(gp.x + knock.x * dt, -WALK_X, WALK_X); gp.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
+  // vzhled motorky
+  guru.rotation.y = heading + Math.PI; wobble = Math.max(0, wobble - dt * 1.2);
+  B.lean.rotation.z += ((turn * .38 * Math.min(1, speed / 8)) + Math.sin(now / 50) * .25 * wobble - B.lean.rotation.z) * Math.min(1, dt * 6);
+  B.bob.position.y += (Math.sin(now / 45) * .012 * Math.min(1, speed / 10) - B.bob.position.y) * Math.min(1, dt * 8);
+  B.front.spin.rotation.x += speed * dt / B.R; B.rear.spin.rotation.x += speed * dt / B.R;
+  B.rider.head.rotation.y = -turn * .25; B.rider.tail.rotation.y = Math.sin(now / 200) * .15;
+  // překážky
+  if (invul <= 0 && gp.y < 1) for (const o of obs) { if (Math.abs(gp.x - o.x) < o.hw + .3 && Math.abs(gp.z - o.z) < o.hd + .8 && gp.y < o.h) { hitObs(o); break; } }
+  updateBones(dt, now); updateBirds(dt, now);
+  // cíl – Guru a Fiškule fandí
+  if (gp.z > -70) [[G, G.root], [F, fis]].forEach(([m, r], i) => { r.position.y = Math.abs(Math.sin(now / 180 + i)) * .45; m.arms.forEach((a, j) => a.rotation.set(0, 0, (j ? 1 : -1) * (2.6 + Math.sin(now / 120 + j) * .3))); r.rotation.y = Math.atan2(gp.x - r.position.x, gp.z - r.position.z); });
+  if (gp.z > -4 && finishT < 0) { finishT = 0; showToast('Cíl! 🏁'); }
+  if (finishT >= 0) { finishT += dt; if (finishT > 1.8) endScreen('Cíl! SIKI dojel na start 🏍️', true); }
+  // kamera
+  const back = tmp.set(Math.sin(heading) * 6.2, 2.9, Math.cos(heading) * 6.2).add(gp);
+  camPos.lerp(back, 1 - Math.pow(.01, dt)); camera.position.copy(camPos); camera.lookAt(gp.x, gp.y + 1.5, gp.z + 3);
+  camera.fov += (58 + speed * 1.1 - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix();
+  sun.position.set(gp.x + 12, 25, gp.z + 8); sun.target.position.copy(gp);
+  if (eng) { const f = 45 + speed * 7; eng.o.frequency.value = f; eng.o2.frequency.value = f * .5; }
+  renderer.render(scene, camera);
+  window.__l2 = { x: gp.x, z: gp.z, speed, lives, done, obs: obs.length, raceT };
+  requestAnimationFrame(tick2);
+}
+if (LEVEL === 2) startLevel2();
