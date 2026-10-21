@@ -1,6 +1,7 @@
 // Guru Run 3D – prototyp (Three.js, offline)
 import * as THREE from 'three';
 import { buildGuru, animateGuru } from './guru-model.js';
+import { buildFiskule } from './fiskule-model.js';
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance' });
@@ -72,6 +73,14 @@ gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 // --- Guru (model v guru-model.js) ---
 const G = buildGuru(); const guru = G.root; guru.scale.setScalar(1); scene.add(guru);
 
+// --- Fiškule (parťačka) ---
+const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visible = false; scene.add(fis);
+let fState = 'idle', fVy = 0, fT = 0, fSpeed = 0;
+const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
+let cut = false, cutSkip = false;
+addEventListener('keydown', () => { if (cut) cutSkip = true; });
+addEventListener('pointerdown', () => { if (cut) cutSkip = true; });
+
 // --- kostičky (InstancedMesh) ---
 function mergeGeo(list) { const pos = [], nor = []; for (const g0 of list) { const g = g0.toNonIndexed(); pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); return g; }
 const boneParts = [new THREE.CapsuleGeometry(.07, .42, 3, 8).rotateZ(Math.PI / 2)];
@@ -139,9 +148,53 @@ const holeAt = z => HOLES.some(h => z < h.z0 && z > h.z1);
 const camPos = new THREE.Vector3(0, 4, 8), tmp = new THREE.Vector3();
 function resize() { const v = window.visualViewport; if (v) { wrap.style.width = v.width + 'px'; wrap.style.height = v.height + 'px'; } const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); visualViewport && visualViewport.addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 300)); resize();
+function updateFiskule(dt, now) {
+  const gp = guru.position;
+  if (fState === 'idle') { if (gp.z < -350) { fState = 'approach'; fis.visible = true; fis.position.set(1.2, 0, gp.z - 38); fis.rotation.y = 0; } return; }
+  if (fState === 'approach') {
+    const dz = gp.z - fis.position.z, dx = gp.x - fis.position.x, d = Math.hypot(dx, dz);
+    fis.rotation.y = Math.atan2(dx, dz); fis.position.x += dx / d * 6 * dt; fis.position.z += dz / d * 6 * dt;
+    fJump(dt, dx / d, dz / d); animateGuru(F, { dt, now }, fis.position.y > 0 ? 0 : 6, true); holdCompass();
+    if (d < 4.5) { fState = 'cut'; cut = true; cutSkip = false; fT = 0; fis.position.y = 0; bubble.innerHTML = 'Ahoj Guru! 🐰 Jsem Fiškule.<br>Kompas ukazuje k Prašné bráně – pojď!<small>ťukni nebo stiskni klávesu</small>'; bubble.classList.add('on'); if (navigator.vibrate) navigator.vibrate(30); }
+    return;
+  }
+  if (fState === 'cut') {
+    fT += dt; const dir = new THREE.Vector3(gp.x - fis.position.x, 0, gp.z - fis.position.z).normalize();
+    fis.rotation.y = Math.atan2(dir.x, dir.z);
+    // kamera přeletí před Fiškuli
+    const side = new THREE.Vector3(-dir.z, 0, dir.x);
+    const camT = tmp.copy(fis.position).addScaledVector(dir, 2.4).addScaledVector(side, 5.2); camT.y = 2.3;
+    camPos.lerp(camT, 1 - Math.pow(.05, dt)); camera.position.copy(camPos); camera.lookAt(fis.position.x * .65 + gp.x * .35, 1.4, fis.position.z * .65 + gp.z * .35);
+    fis.position.y = Math.abs(Math.sin(fT * 6)) * .35;
+    animateGuru(F, { dt, now }, 0, false); F.arms[1].rotation.set(0, 0, 2.6 + Math.sin(fT * 10) * .35); holdCompass();
+    guru.rotation.y = Math.atan2(fis.position.x - gp.x, fis.position.z - gp.z) + Math.PI; animateGuru(G, { dt, now }, 0, false);
+    if ((cutSkip && fT > .6) || fT > 3.5) { cut = false; fState = 'follow'; bubble.classList.remove('on'); fis.position.y = 0; compassEl.classList.add('on'); showToast('Fiškule jde s tebou!'); }
+    return;
+  }
+  // follow: vedle Gurua, kousek za ním
+  const sx = Math.cos(heading), sz = -Math.sin(heading);
+  const tx = gp.x + sx * 1.7 + Math.sin(heading) * .8, tz = gp.z + sz * 1.7 + Math.cos(heading) * .8;
+  let dx = THREE.MathUtils.clamp(tx, -WALK_X, WALK_X) - fis.position.x, dz = tz - fis.position.z; const d = Math.hypot(dx, dz);
+  if (d > 18 || fis.position.y < -3) { fis.position.set(gp.x - Math.sin(heading) * -2 + sx, 0, gp.z + Math.cos(heading) * 2); fVy = 0; return; }
+  fSpeed = d > .3 ? Math.min(11, d * 3) : 0;
+  if (d > .3) { fis.position.x += dx / d * fSpeed * dt; fis.position.z += dz / d * fSpeed * dt; fis.rotation.y += (Math.atan2(dx, dz) - fis.rotation.y + Math.PI * 3) % (Math.PI * 2) - Math.PI > 0 ? Math.min(dt * 8, ((Math.atan2(dx, dz) - fis.rotation.y + Math.PI * 3) % (Math.PI * 2) - Math.PI)) : Math.max(-dt * 8, ((Math.atan2(dx, dz) - fis.rotation.y + Math.PI * 3) % (Math.PI * 2) - Math.PI)); }
+  fJump(dt, d > .3 ? dx / d : 0, d > .3 ? dz / d : 0);
+  animateGuru(F, { dt, now }, fis.position.y > 0 ? 0 : fSpeed, fSpeed > 5); holdCompass();
+  if (fis.position.y > 0) { F.legs[0].rotation.x = -.8; F.legs[1].rotation.x = .4; }
+}
+function holdCompass() { F.arms[0].rotation.set(-1.1, 0, -.35); if (F.compass) F.compass.needle.rotation.z = Math.atan2(0 - fis.position.x, -LEN - fis.position.z) - fis.rotation.y; }
+function fJump(dt, mx, mz) {
+  const p = fis.position, grounded = p.y <= 0 && !holeAt(p.z);
+  if (grounded) { p.y = 0; fVy = 0; if (holeAt(p.z + mz * 1.4) && Math.abs(mz) > .2) fVy = 10; }
+  if (!grounded || fVy > 0) { fVy -= GRAV * dt; p.y += fVy * dt; if (p.y < 0 && !holeAt(p.z)) { p.y = 0; fVy = 0; } }
+}
+window.__tp = z => { guru.position.set(0, 0, z); checkpoint = Math.min(checkpoint, z + 1); camPos.set(0, 4, z + 8); };
+window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut });
+
 function tick(now) {
   if (done) { renderer.render(scene, camera); return requestAnimationFrame(tick); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (cut) { updateFiskule(dt, now); updateBones(dt, now); renderer.render(scene, camera); return requestAnimationFrame(tick); }
   let fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - jy;
   let turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - jx;
   fwd = THREE.MathUtils.clamp(fwd, -1, 1); turn = THREE.MathUtils.clamp(turn, -1, 1);
@@ -173,6 +226,8 @@ function tick(now) {
   if (guru.position.z < -LEN + 10 && !done) endScreen('Cíl! Guru doběhl k Prašné bráně 🏁');
   flags.forEach((f, i) => f.rotation.y = Math.sin(now / 300 + i) * .3);
   updateBones(dt, now);
+  updateFiskule(dt, now);
+  if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
   animateGuru(G, { dt, now }, grounded ? speed : 0, running);
   if (!grounded) { const up = vy > 0; G.arms.forEach((a, i) => a.rotation.x = up ? -2.6 : -1.6); G.legs[0].rotation.x = up ? -.9 : -.3; G.legs[1].rotation.x = up ? .5 : .2; G.body.rotation.x = up ? -.1 : .15; }
   squash *= Math.pow(.0005, dt); const q = squash > 0 ? squash * .25 : squash * .18;
