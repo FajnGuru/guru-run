@@ -8,8 +8,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.5 : 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 stage.prepend(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9cc9e8); scene.fog = new THREE.Fog(0x9cc9e8, 40, 190);
-const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 220);
+scene.background = new THREE.Color(0x9cc9e8); scene.fog = new THREE.Fog(0x9cc9e8, 35, 150);
+const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 160);
 scene.add(new THREE.HemisphereLight(0xdfefff, 0x6b5a48, 1.2));
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
 sun.position.set(12, 25, 8); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
@@ -18,15 +18,30 @@ scene.add(sun, sun.target);
 
 const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 });
 // --- ulice ---
-const LEN = 160, HALF_W = 5;
+const LEN = 800, HALF_W = 5, WALK_X = HALF_W + 3.2;
+// díry: z začátek (blíž startu), délka – rostoucí obtížnost
+const HOLES = [[-60, 2.4], [-130, 2.8], [-200, 3.2], [-270, 3.6], [-340, 3.6], [-410, 4.0], [-480, 4.2], [-550, 4.4], [-620, 4.6], [-690, 4.8]].map(([z, l]) => ({ z0: z, z1: z - l }));
+const CHECKS = [0, -120, -260, -400, -540, -680];
 const cv = document.createElement('canvas'); cv.width = cv.height = 256; const cx = cv.getContext('2d');
 cx.fillStyle = '#4c4f55'; cx.fillRect(0, 0, 256, 256);
 for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { cx.fillStyle = `hsl(220,4%,${38 + Math.random() * 14}%)`; cx.beginPath(); cx.roundRect(x * 32 + (y % 2) * 16 + 2, y * 32 + 2, 28, 28, 6); cx.fill(); }
 const cob = new THREE.CanvasTexture(cv); cob.wrapS = cob.wrapT = THREE.RepeatWrapping; cob.repeat.set(5, 80); cob.colorSpace = THREE.SRGBColorSpace;
-const street = new THREE.Mesh(new THREE.PlaneGeometry(HALF_W * 2, LEN + 20), new THREE.MeshStandardMaterial({ map: cob, roughness: .95 }));
-street.rotation.x = -Math.PI / 2; street.position.z = -LEN / 2 + 10; street.receiveShadow = true; scene.add(street);
-const walk = new THREE.Mesh(new THREE.PlaneGeometry(4, LEN + 20), M(0x9a948a));
-[-1, 1].forEach(s => { const w = walk.clone(); w.rotation.x = -Math.PI / 2; w.position.set(s * (HALF_W + 2), .02, -LEN / 2 + 10); w.receiveShadow = true; scene.add(w); });
+const streetMat = new THREE.MeshStandardMaterial({ map: cob, roughness: .95 }), walkMat = M(0x9a948a);
+cob.repeat.set(5, 1);
+const segs = []; { let z = 12; for (const h of HOLES) { segs.push([z, h.z0]); z = h.z1; } segs.push([z, -LEN - 12]); }
+for (const [a, b] of segs) {
+  const L = a - b, g = new THREE.PlaneGeometry(HALF_W * 2, L); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, uv.getY(k) * L / 2);
+  const st = new THREE.Mesh(g, streetMat); st.rotation.x = -Math.PI / 2; st.position.z = (a + b) / 2; st.receiveShadow = true; scene.add(st);
+  [-1, 1].forEach(sg => { const w = new THREE.Mesh(new THREE.PlaneGeometry(4, L), walkMat); w.rotation.x = -Math.PI / 2; w.position.set(sg * (HALF_W + 2), .02, (a + b) / 2); w.receiveShadow = true; scene.add(w); });
+}
+// jámy: vnitřek (BackSide) + krajové kameny
+const pitMat = new THREE.MeshStandardMaterial({ color: 0x15120f, side: THREE.BackSide, roughness: 1 }), edgeMat = M(0x8c8378);
+for (const h of HOLES) {
+  const L = h.z0 - h.z1, pit = new THREE.Mesh(new THREE.BoxGeometry(WALK_X * 2 + .8, 8, L), pitMat); pit.position.set(0, -4.001, (h.z0 + h.z1) / 2); scene.add(pit);
+  for (const z of [h.z0, h.z1]) { const e = new THREE.Mesh(new THREE.BoxGeometry(WALK_X * 2 + .8, .18, .35), edgeMat); e.position.set(0, .06, z + (z === h.z0 ? -.15 : .15)); e.receiveShadow = true; scene.add(e); }
+}
+// checkpointy – vlaječky
+const flags = CHECKS.slice(1).map(z => { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 2.4, 6), M(0xdddddd)).translateY(1.2)); const f = new THREE.Mesh(new THREE.PlaneGeometry(.9, .55), new THREE.MeshStandardMaterial({ color: 0xc0392b, side: THREE.DoubleSide })); f.position.set(.47, 2.1, 0); g.add(f); g.position.set(-HALF_W - .6, 0, z); scene.add(g); return f; });
 // domy – instancované pro výkon
 const cols = [0xe8c9a0, 0xd9a07a, 0xf0e2c0, 0xb9c9a8, 0xe6b8b0, 0xc8d4e0, 0xf2d27a];
 const boxG = new THREE.BoxGeometry(1, 1, 1), roofG = new THREE.ConeGeometry(.75, 1, 4); roofG.rotateY(Math.PI / 4);
@@ -64,12 +79,15 @@ for (const x of [-.27, .27]) for (const y of [-.07, .07]) boneParts.push(new THR
 const boneMat = new THREE.MeshStandardMaterial({ color: 0xfffbea, emissive: 0xffe9a0, emissiveIntensity: .45, roughness: .5 });
 const bonePts = [];
 const addB = (x, z, y = .9) => bonePts.push({ x, y, z, alive: true, t: 0 });
+const overHole = z => HOLES.find(h => z <= h.z0 + 1 && z >= h.z1 - 1);
 for (let z = -4, k = 0; z > -LEN + 6; z -= 1.6, k++) {
+  const h = overHole(z);
+  if (h) { const t = (h.z0 + 1 - z) / (h.z0 - h.z1 + 2); addB(0, z, .9 + Math.sin(t * Math.PI) * 1.4); continue; }
   const seg = Math.floor(k / 10) % 4, i = k % 10;
-  if (seg === 0) addB(0, z);                                   // řada
-  else if (seg === 1) addB(Math.sin(i / 9 * Math.PI * 2) * 3, z); // vlna
-  else if (seg === 2) addB(i % 2 ? 2.5 : -2.5, z);             // cikcak
-  else addB(-3, z, .9 + Math.sin(i / 9 * Math.PI) * 1.2), addB(3, z, .9 + Math.sin(i / 9 * Math.PI) * 1.2); // oblouky
+  if (seg === 0) addB(0, z);
+  else if (seg === 1) addB(Math.sin(i / 9 * Math.PI * 2) * 3, z);
+  else if (seg === 2) addB(i % 2 ? 2.5 : -2.5, z);
+  else addB(-3, z, .9 + Math.sin(i / 9 * Math.PI) * 2.0), addB(3, z, .9 + Math.sin(i / 9 * Math.PI) * 2.0); // vysoké oblouky – na skok
 }
 const bonesM = new THREE.InstancedMesh(mergeGeo(boneParts), boneMat, bonePts.length); bonesM.castShadow = true; scene.add(bonesM);
 const sparkG = new THREE.BufferGeometry(), SP = 60, spPos = new Float32Array(SP * 3), spVel = []; let spLife = new Float32Array(SP);
@@ -108,13 +126,21 @@ joy.addEventListener('pointermove', e => e.pointerId === jid && jmove(e));
 const jend = e => { if (e.pointerId !== jid) return; jid = null; jx = jy = 0; knob.style.transform = ''; };
 joy.addEventListener('pointerup', jend); joy.addEventListener('pointercancel', jend);
 runB.addEventListener('pointerdown', () => { runTouch = !runTouch; runB.classList.toggle('on', runTouch); });
+const jumpB = document.getElementById('jump'); let jumpTouch = false;
+jumpB.addEventListener('pointerdown', e => { jumpTouch = true; jumpB.classList.add('on'); jumpB.setPointerCapture(e.pointerId); });
+['pointerup', 'pointercancel'].forEach(t => jumpB.addEventListener(t, () => { jumpTouch = false; jumpB.classList.remove('on'); }));
+const over = document.getElementById('over');
+function endScreen(title) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = `Kostičky: ${bones} / ${bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; over.classList.add('on'); }
 
 // --- smyčka ---
-let heading = 0, speed = 0, phase = 0, last = performance.now();
+let heading = 0, speed = 0, phase = 0, last = performance.now(), vy = 0, grounded = true, coyote = 0, buffer = 0, jumpHeld = false, falling = false, done = false, checkpoint = 0, squash = 0;
+const GRAV = 26, JUMP_V = 9.5;
+const holeAt = z => HOLES.some(h => z < h.z0 && z > h.z1);
 const camPos = new THREE.Vector3(0, 4, 8), tmp = new THREE.Vector3();
 function resize() { const v = window.visualViewport; if (v) { wrap.style.width = v.width + 'px'; wrap.style.height = v.height + 'px'; } const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); visualViewport && visualViewport.addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 300)); resize();
 function tick(now) {
+  if (done) { renderer.render(scene, camera); return requestAnimationFrame(tick); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   let fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - jy;
   let turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - jx;
@@ -128,14 +154,36 @@ function tick(now) {
   guru.position.x += -Math.sin(heading) * speed * dt; guru.position.z += -Math.cos(heading) * speed * dt;
   guru.position.x = THREE.MathUtils.clamp(guru.position.x, -HALF_W - 3.2, HALF_W + 3.2);
   guru.position.z = THREE.MathUtils.clamp(guru.position.z, -LEN + 2, 8);
+  if (falling) guru.position.x = THREE.MathUtils.clamp(guru.position.x, -WALK_X, WALK_X);
+  // skok: coyote time + buffer
+  const jp = keys.Space || jumpTouch;
+  if (jp && !jumpHeld) buffer = .15; jumpHeld = jp; buffer -= dt; coyote -= dt;
+  if (buffer > 0 && (grounded || coyote > 0) && !falling) { vy = JUMP_V; grounded = false; coyote = 0; buffer = 0; squash = -1; }
+  if (!jp && vy > 3) vy -= GRAV * 1.2 * dt; // krátký skok při puštění
+  vy -= GRAV * dt; guru.position.y += vy * dt;
+  const overPit = holeAt(guru.position.z);
+  if (guru.position.y <= 0 && !overPit && !falling) { if (!grounded) squash = 1; guru.position.y = 0; vy = 0; grounded = true; coyote = .12; }
+  else { if (grounded) coyote = .12; grounded = false; if (overPit && guru.position.y < -.3) falling = true; }
+  if (falling) { guru.position.z = THREE.MathUtils.clamp(guru.position.z, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z1 + .4 ?? -1e9, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z0 - .4 ?? 1e9); }
+  if (guru.position.y < -6 && !done) {
+    lives--; elL.textContent = '❤ ' + Math.max(0, lives); if (navigator.vibrate) navigator.vibrate([80, 40, 120]);
+    if (lives <= 0) endScreen('Konec hry'); else { showToast('-1 život'); guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; camPos.set(0, 4, checkpoint + 8); }
+  }
+  for (const c of CHECKS) if (guru.position.z < c - 1 && c < checkpoint && grounded) { checkpoint = c; showToast('Checkpoint ✔'); }
+  if (guru.position.z < -LEN + 10 && !done) endScreen('Cíl! Guru doběhl k Prašné bráně 🏁');
+  flags.forEach((f, i) => f.rotation.y = Math.sin(now / 300 + i) * .3);
   updateBones(dt, now);
-  animateGuru(G, { dt, now }, speed, running);
+  animateGuru(G, { dt, now }, grounded ? speed : 0, running);
+  if (!grounded) { const up = vy > 0; G.arms.forEach((a, i) => a.rotation.x = up ? -2.6 : -1.6); G.legs[0].rotation.x = up ? -.9 : -.3; G.legs[1].rotation.x = up ? .5 : .2; G.body.rotation.x = up ? -.1 : .15; }
+  squash *= Math.pow(.0005, dt); const q = squash > 0 ? squash * .25 : squash * .18;
+  guru.scale.set(1 + q, 1 - q * 1.4, 1 + q);
   // kamera za Guruem
   const back = new THREE.Vector3(Math.sin(heading) * 6.5, 3.6, Math.cos(heading) * 6.5);
   camPos.lerp(tmp.copy(guru.position).add(back), 1 - Math.pow(.02, dt));
   camera.position.copy(camPos); camera.lookAt(guru.position.x, guru.position.y + 1.8, guru.position.z);
   sun.position.set(guru.position.x + 12, 25, guru.position.z + 8); sun.target.position.copy(guru.position);
   renderer.render(scene, camera); requestAnimationFrame(tick);
+  window.__st = { y: guru.position.y, z: guru.position.z, lives, grounded, falling, checkpoint, done };
 }
 requestAnimationFrame(tick);
 window.__guru = guru;
