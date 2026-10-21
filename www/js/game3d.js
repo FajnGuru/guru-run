@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { buildGuru, animateGuru } from './guru-model.js';
 import { buildFiskule } from './fiskule-model.js';
+import { buildBird, flap } from './bird-model.js';
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance' });
@@ -191,6 +192,60 @@ function fJump(dt, mx, mz) {
 window.__tp = z => { guru.position.set(0, 0, z); checkpoint = Math.min(checkpoint, z + 1); camPos.set(0, 4, z + 8); };
 window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut });
 
+// --- holubi útočníci ---
+const birds = [];
+for (let i = 0; i < 4; i++) { const b = buildBird(); b.state = 'off'; b.root.visible = false; b.a = i * 1.6; scene.add(b.root); birds.push(b); }
+const markGeo = new THREE.RingGeometry(.55, .8, 24).rotateX(-Math.PI / 2);
+birds.forEach(b => { b.mark = new THREE.Mesh(markGeo, new THREE.MeshBasicMaterial({ color: 0xd62828, transparent: true, opacity: .8, depthWrite: false })); b.mark.visible = false; scene.add(b.mark);
+  b.shadow = new THREE.Mesh(new THREE.CircleGeometry(.5, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .45, depthWrite: false })); b.shadow.visible = false; scene.add(b.shadow); });
+let birdTimer = 4, invul = 0;
+const S0 = new THREE.Vector3(), T0 = new THREE.Vector3(), E0 = new THREE.Vector3(), V0 = new THREE.Vector3();
+function squawk() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime; o.type = 'sawtooth'; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(380, t + .25); g.gain.setValueAtTime(.05, t); g.gain.exponentialRampToValueAtTime(.001, t + .3); o.connect(g).connect(actx.destination); o.start(); o.stop(t + .32); } catch (e) {} }
+function startDive(b) {
+  const gp = guru.position; b.state = 'tele'; b.t = 0; b.T = new THREE.Vector3(gp.x, .9, gp.z);
+  b.mark.position.set(gp.x, .04, gp.z); b.mark.visible = true; squawk();
+}
+window.__forceDive = () => { const b = birds.find(b => b.state === 'circle' || b.state === 'off'); if (!b) return false; if (b.state === 'off') { b.state = 'circle'; b.root.visible = true; } placeCircle(b, 0); startDive(b); return true; };
+function placeCircle(b, now) { const gp = guru.position; b.a += .016; b.root.position.set(Math.sin(b.a) * 5, 6.5 + Math.sin(b.a * 2) * .6, gp.z - 12 + Math.cos(b.a) * 5); b.root.rotation.y = b.a + Math.PI / 2; }
+function updateBirds(dt, now) {
+  const gp = guru.position, prog = Math.min(1, Math.max(0, (-gp.z - 120) / (LEN - 120)));
+  const active = gp.z < -120 && !cut && fState !== 'cut' && !done;
+  birds.forEach((b, i) => { if (i < 2 + Math.round(prog * 2) && active && b.state === 'off') { b.state = 'circle'; b.root.visible = true; } });
+  const attacking = birds.filter(b => b.state === 'tele' || b.state === 'dive').length;
+  birdTimer -= dt; if (window.__noAuto) birdTimer = 99;
+  if (active && birdTimer <= 0 && attacking < 2) { const c = birds.filter(b => b.state === 'circle'); if (c.length) startDive(c[(Math.random() * c.length) | 0]); birdTimer = THREE.MathUtils.lerp(6.5, 2.2, prog) + Math.random() * 1.5; }
+  invul -= dt; if (invul > 0) guru.visible = Math.floor(invul * 12) % 2 === 0; else guru.visible = true;
+  for (const b of birds) {
+    if (b.state === 'off') continue;
+    b.shadow.visible = false;
+    if (b.state === 'circle') { placeCircle(b, now); flap(b, now / 1000 + b.a, 'fly'); continue; }
+    b.t += dt;
+    if (b.state === 'tele') {
+      b.root.position.y += Math.sin(b.t * 40) * .01; b.root.lookAt(b.T); flap(b, b.t, 'tele');
+      b.mark.scale.setScalar(1 + Math.sin(b.t * 18) * .15); b.mark.material.opacity = .5 + b.t * .4;
+      if (b.t >= 1) { b.state = 'dive'; b.t = 0; b.S = b.root.position.clone(); const h = V0.copy(b.T).sub(b.S); h.y = 0; h.normalize(); b.E = b.T.clone().addScaledVector(h, 12); b.E.y = 12; }
+      continue;
+    }
+    if (b.state === 'dive') {
+      flap(b, b.t, 'dive'); const prev = b.root.position.clone();
+      if (b.t < .75) b.root.position.lerpVectors(b.S, b.T, b.t / .75); else b.root.position.lerpVectors(b.T, b.E, Math.min(1, (b.t - .75) / 1.1));
+      b.root.lookAt(V0.copy(b.root.position).add(b.root.position.clone().sub(prev)));
+      b.shadow.visible = true; b.shadow.position.set(b.root.position.x, .03, b.root.position.z);
+      if (b.t > .75) b.mark.visible = false;
+      const dx = b.root.position.x - gp.x, dy = b.root.position.y - (gp.y + 1.1), dz = b.root.position.z - gp.z;
+      if (invul <= 0 && dx * dx + dy * dy + dz * dz < 1.0 && !done) birdHit(b, prev);
+      if (b.t > 1.85) { b.state = 'circle'; b.mark.visible = false; }
+    }
+  }
+}
+function birdHit(b, prev) {
+  lives--; elL.textContent = '❤ ' + Math.max(0, lives); invul = 1.6; if (navigator.vibrate) navigator.vibrate([60, 30, 120]); squawk();
+  const k = V0.copy(b.root.position).sub(prev); k.y = 0; k.normalize(); knock.copy(k).multiplyScalar(7); vy = 5; grounded = false; showToast('Au! -1 život');
+  if (lives <= 0) endScreen('Konec hry – holubi vyhráli');
+}
+const knock = new THREE.Vector3();
+window.__birds = () => birds.map(b => b.state);
+
 function tick(now) {
   if (done) { renderer.render(scene, camera); return requestAnimationFrame(tick); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
@@ -227,6 +282,8 @@ function tick(now) {
   flags.forEach((f, i) => f.rotation.y = Math.sin(now / 300 + i) * .3);
   updateBones(dt, now);
   updateFiskule(dt, now);
+  updateBirds(dt, now);
+  if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
   animateGuru(G, { dt, now }, grounded ? speed : 0, running);
   if (!grounded) { const up = vy > 0; G.arms.forEach((a, i) => a.rotation.x = up ? -2.6 : -1.6); G.legs[0].rotation.x = up ? -.9 : -.3; G.legs[1].rotation.x = up ? .5 : .2; G.body.rotation.x = up ? -.1 : .15; }
@@ -238,7 +295,7 @@ function tick(now) {
   camera.position.copy(camPos); camera.lookAt(guru.position.x, guru.position.y + 1.8, guru.position.z);
   sun.position.set(guru.position.x + 12, 25, guru.position.z + 8); sun.target.position.copy(guru.position);
   renderer.render(scene, camera); requestAnimationFrame(tick);
-  window.__st = { y: guru.position.y, z: guru.position.z, lives, grounded, falling, checkpoint, done };
+  window.__st = { x: guru.position.x, y: guru.position.y, z: guru.position.z, lives, grounded, falling, checkpoint, done };
 }
 requestAnimationFrame(tick);
 window.__guru = guru;
