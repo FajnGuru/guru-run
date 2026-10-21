@@ -48,7 +48,7 @@ function drawCity(s, factor, color, baseY, hMin, hMax, seed, windows) {
 
 class Title extends Phaser.Scene {
   constructor() { super('Title'); }
-  preload() { this.load.image('art', 'assets/guru.jpg'); }
+  preload() { this.load.image('art', '../assets/guru.jpg'); }
   create() {
     this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a);
     const a = this.add.image(250, H / 2, 'art'); a.setScale(Math.min(380 / a.width, 440 / a.height));

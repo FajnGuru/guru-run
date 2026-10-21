@@ -17,3 +17,8 @@ Cíl: bouda. Hodnocení 1–3 tlapky (bronz / stříbro / zlato).
 
 ## APK (později)
 `npm i @capacitor/core @capacitor/cli @capacitor/android && npx cap add android && npx cap sync android`, pak build v Android Studiu.
+
+## 3D verze (`/3d/`)
+Three.js (lokálně `www/assets/vendor/three.module.min.js`), pohled zezadu jako Crash Bandicoot.
+Ovládání: W/S nebo ↑/↓ dopředu/dozadu, A/D nebo ←/→ otáčení, Shift běh; na mobilu joystick vlevo dole a tlačítko Běh vpravo.
+2D plošinovka je na `/2d/`, rozcestník na `/`. Reference postavy: `www/assets/refs/` (Grok Imagine).
