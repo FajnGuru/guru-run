@@ -158,8 +158,8 @@ class Game extends Phaser.Scene {
       const up = () => { this.touch[key] = false; c.setFillStyle(0x000000, .35); };
       c.on('pointerup', up); c.on('pointerout', up);
     };
-    btn(70, H - 70, '←', 'left'); btn(180, H - 70, '→', 'right');
-    btn(W - 190, H - 70, 'Skok', 'jump'); btn(W - 75, H - 120, 'Otočka', 'spin', 50);
+    btn(70, H - 80, '←', 'left'); btn(180, H - 80, '→', 'right');
+    btn(W - 190, H - 80, 'Skok', 'jump'); btn(W - 75, H - 140, 'Otočka', 'spin', 50);
   }
   update(t) {
     if (this.done) return;
