@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { buildGuru, animateGuru } from './guru-model.js';
 import { buildFiskule } from './fiskule-model.js';
 import { buildBird, flap } from './bird-model.js';
+import { buildSiki } from './siki-model.js';
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance' });
@@ -79,8 +80,42 @@ const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visib
 let fState = 'idle', fVy = 0, fT = 0, fSpeed = 0;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
-addEventListener('keydown', () => { if (cut) cutSkip = true; });
-addEventListener('pointerdown', () => { if (cut) cutSkip = true; });
+addEventListener('keydown', () => { if (cut) { cutSkip = true; sikiTap(); } });
+addEventListener('pointerdown', () => { if (cut) { cutSkip = true; sikiTap(); } });
+// --- SIKI u Prašné brány ---
+const K = buildSiki(); const siki = K.root; siki.scale.setScalar(1.15); siki.position.set(0, 0, -LEN + 4); scene.add(siki);
+let sState = 'idle', sT = 0, sLine = -1, sLineT = 0, sFromZ = 0, sToZ = 0;
+const sikiLines = () => ['Ahoj Guru! Já jsem SIKI. 🦘', 'Doběhl jsi až k Prašné bráně – klobouk dolů!', `Sesbíral jsi ${bones} ${bones === 1 ? 'kostičku' : bones >= 2 && bones <= 4 ? 'kostičky' : 'kostiček'}. Příště tě čeká další level!`];
+function say(t) { try { if (!('speechSynthesis' in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t.replace(/[🦘]/g, '')); u.lang = 'cs-CZ'; u.rate = 1.0; speechSynthesis.speak(u); } catch (e) {} }
+function showLine(i, speak) { sLine = i; sLineT = 0; const t = sikiLines()[i]; bubble.innerHTML = '<b>SIKI:</b> ' + t + '<small>ťukni pro pokračování</small>'; bubble.classList.add('on'); if (speak) say(t); }
+function sikiTap() { if (sState !== 'cut' || sLine < 0 || sLineT < .4) return; if (sLine < 2) showLine(sLine + 1, true); else finishSiki(); }
+function finishSiki() { sState = 'done'; cut = false; bubble.classList.remove('on'); endScreen('Cíl! Guru doběhl k Prašné bráně 🏁'); }
+function updateSiki(dt, now) {
+  const gp = guru.position;
+  if (sState === 'idle') {
+    if (Math.abs(gp.z - siki.position.z) > 60) return;
+    siki.position.y = Math.max(0, Math.sin(now / 260)) * .18 * (Math.sin(now / 2300) > .3 ? 1 : 0);
+    K.head.rotation.y = Math.sin(now / 1400) * .5; K.tail.rotation.y = Math.sin(now / 700) * .25;
+    if (gp.z < siki.position.z + 15 && !done) { sState = 'cut'; cut = true; cutSkip = false; sT = 0; sFromZ = siki.position.z; sToZ = gp.z - 4.5; birds.forEach(b => { if (b.state !== 'off') { b.state = 'circle'; b.mark.visible = false; } }); }
+    return;
+  }
+  if (sState !== 'cut') return;
+  sT += dt; sLineT += dt;
+  // velké skoky ke Guruovi
+  const hopDur = 1.4;
+  if (sT < hopDur) { const k = sT / hopDur; siki.position.z = THREE.MathUtils.lerp(sFromZ, sToZ, k); siki.position.x = THREE.MathUtils.lerp(0, gp.x * .6, k); siki.position.y = Math.abs(Math.sin(k * Math.PI * 2)) * 1.4; }
+  else if (sT < hopDur + .8) { siki.position.y = Math.abs(Math.sin((sT - hopDur) / .8 * Math.PI)) * 2.2; if (sLine < 0 && sT > hopDur + .4) showLine(0, false); } // velký skok radosti
+  else siki.position.y = 0;
+  siki.rotation.y = Math.atan2(gp.x - siki.position.x, gp.z - siki.position.z);
+  K.tail.rotation.y = Math.sin(now / 300) * .3; K.head.rotation.y = Math.sin(now / 500) * .12;
+  K.arms[1].rotation.set(0, 0, sLine >= 0 ? 2.5 + Math.sin(now / 120) * .3 : .14);
+  guru.rotation.y = Math.atan2(siki.position.x - gp.x, siki.position.z - gp.z); animateGuru(G, { dt, now }, 0, false);
+  const camT = tmp.set(gp.x + 4.2, 2.4, gp.z + 5.5); camPos.lerp(camT, 1 - Math.pow(.05, dt)); camera.position.copy(camPos);
+  camera.lookAt(siki.position.x * .7 + gp.x * .3, 2.9, siki.position.z * .7 + gp.z * .3);
+  if (fState === 'follow') { fis.position.y = 0; fis.rotation.y = Math.atan2(siki.position.x - fis.position.x, siki.position.z - fis.position.z); }
+  if (sLine >= 0 && sLineT > 3.5) { if (sLine < 2) showLine(sLine + 1, false); else finishSiki(); }
+}
+window.__siki = () => ({ state: sState, line: sLine, done });
 
 // --- kostičky (InstancedMesh) ---
 function mergeGeo(list) { const pos = [], nor = []; for (const g0 of list) { const g = g0.toNonIndexed(); pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); return g; }
@@ -168,7 +203,7 @@ function updateFiskule(dt, now) {
     camPos.lerp(camT, 1 - Math.pow(.05, dt)); camera.position.copy(camPos); camera.lookAt(fis.position.x * .65 + gp.x * .35, 1.4, fis.position.z * .65 + gp.z * .35);
     fis.position.y = Math.abs(Math.sin(fT * 6)) * .35;
     animateGuru(F, { dt, now }, 0, false); F.arms[1].rotation.set(0, 0, 2.6 + Math.sin(fT * 10) * .35); holdCompass();
-    guru.rotation.y = Math.atan2(fis.position.x - gp.x, fis.position.z - gp.z) + Math.PI; animateGuru(G, { dt, now }, 0, false);
+    guru.rotation.y = Math.atan2(fis.position.x - gp.x, fis.position.z - gp.z); animateGuru(G, { dt, now }, 0, false);
     if ((cutSkip && fT > .6) || fT > 3.5) { cut = false; fState = 'follow'; bubble.classList.remove('on'); fis.position.y = 0; compassEl.classList.add('on'); showToast('Fiškule jde s tebou!'); }
     return;
   }
@@ -209,7 +244,7 @@ window.__forceDive = () => { const b = birds.find(b => b.state === 'circle' || b
 function placeCircle(b, now) { const gp = guru.position; b.a += .016; b.root.position.set(Math.sin(b.a) * 5, 6.5 + Math.sin(b.a * 2) * .6, gp.z - 12 + Math.cos(b.a) * 5); b.root.rotation.y = b.a + Math.PI / 2; }
 function updateBirds(dt, now) {
   const gp = guru.position, prog = Math.min(1, Math.max(0, (-gp.z - 120) / (LEN - 120)));
-  const active = gp.z < -120 && !cut && fState !== 'cut' && !done;
+  const active = gp.z < -120 && gp.z > -LEN + 30 && !cut && fState !== 'cut' && !done;
   birds.forEach((b, i) => { if (i < 2 + Math.round(prog * 2) && active && b.state === 'off') { b.state = 'circle'; b.root.visible = true; } });
   const attacking = birds.filter(b => b.state === 'tele' || b.state === 'dive').length;
   birdTimer -= dt; if (window.__noAuto) birdTimer = 99;
@@ -249,7 +284,7 @@ window.__birds = () => birds.map(b => b.state);
 function tick(now) {
   if (done) { renderer.render(scene, camera); return requestAnimationFrame(tick); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if (cut) { updateFiskule(dt, now); updateBones(dt, now); renderer.render(scene, camera); return requestAnimationFrame(tick); }
+  if (cut) { if (sState === 'cut') updateSiki(dt, now); else updateFiskule(dt, now); updateBones(dt, now); renderer.render(scene, camera); return requestAnimationFrame(tick); }
   let fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - jy;
   let turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - jx;
   fwd = THREE.MathUtils.clamp(fwd, -1, 1); turn = THREE.MathUtils.clamp(turn, -1, 1);
@@ -278,11 +313,11 @@ function tick(now) {
     if (lives <= 0) endScreen('Konec hry'); else { showToast('-1 život'); guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; camPos.set(0, 4, checkpoint + 8); }
   }
   for (const c of CHECKS) if (guru.position.z < c - 1 && c < checkpoint && grounded) { checkpoint = c; showToast('Checkpoint ✔'); }
-  if (guru.position.z < -LEN + 10 && !done) endScreen('Cíl! Guru doběhl k Prašné bráně 🏁');
   flags.forEach((f, i) => f.rotation.y = Math.sin(now / 300 + i) * .3);
   updateBones(dt, now);
   updateFiskule(dt, now);
   updateBirds(dt, now);
+  updateSiki(dt, now);
   if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
   animateGuru(G, { dt, now }, grounded ? speed : 0, running);
