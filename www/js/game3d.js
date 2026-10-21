@@ -179,7 +179,7 @@ const jumpB = document.getElementById('jump'); let jumpTouch = false;
 jumpB.addEventListener('pointerdown', e => { jumpTouch = true; jumpB.classList.add('on'); jumpB.setPointerCapture(e.pointerId); });
 ['pointerup', 'pointercancel'].forEach(t => jumpB.addEventListener(t, () => { jumpTouch = false; jumpB.classList.remove('on'); }));
 const over = document.getElementById('over');
-function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; over.classList.add('on'); }
+function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonesTotal ?? bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; over.classList.add('on'); }
 let raceT = 0; const fmtT = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor(t * 10 % 10)}`;
 
 // --- smyčka ---
@@ -250,7 +250,7 @@ window.__forceDive = () => { const b = birds.find(b => b.state === 'circle' || b
 function placeCircle(b, now) { const gp = guru.position; b.a += .016; b.root.position.set(Math.sin(b.a) * 5, 6.5 + Math.sin(b.a * 2) * .6, gp.z + (LEVEL === 2 ? 22 : -12) + Math.cos(b.a) * 5); b.root.rotation.y = b.a + Math.PI / 2; }
 function updateBirds(dt, now) {
   const gp = guru.position, prog = Math.min(1, Math.max(0, (-gp.z - 120) / (LEN - 120)));
-  const active = (LEVEL === 2 ? gp.z > -LEN + 60 && gp.z < -40 : gp.z < -120 && gp.z > -LEN + 30) && !cut && fState !== 'cut' && !done;
+  const active = (LEVEL === 2 ? gp.z > -LEN + 164 && gp.z < -40 : gp.z < -120 && gp.z > -LEN + 30) && !cut && fState !== 'cut' && !done;
   birds.forEach((b, i) => { if (i < 2 + Math.round(prog * 2) && active && b.state === 'off') { b.state = 'circle'; b.root.visible = true; } });
   const attacking = birds.filter(b => b.state === 'tele' || b.state === 'dive').length;
   birdTimer -= dt; if (window.__noAuto) birdTimer = 99;
@@ -342,7 +342,7 @@ if (LEVEL === 1) requestAnimationFrame(tick);
 window.__guru = guru;
 
 // ================= LEVEL 2: SIKI na motorce =================
-let B = null, obs = [], wobble = 0, finishT = -1, eng = null;
+let bonesTotal = null; let B = null, obs = [], wobble = 0, finishT = -1, eng = null;
 function startLevel2() {
   flags.forEach(f => f.parent.visible = false); siki.visible = false;
   B = buildMotorbike(); scene.add(B.root); guru = B.root;
@@ -351,6 +351,7 @@ function startLevel2() {
   document.querySelector('#hud').firstChild.textContent = '';
   buildObstacles();
   bonePts.forEach(b => { if (obs.some(o => Math.abs(b.x - o.x) < o.hw + .3 && Math.abs(b.z - o.z) < o.hd + .3)) { b.alive = false; b.t = 0; } });
+  bonesTotal = bonePts.filter(b => b.alive).length;
   showToast('Level 2: SIKI jede zpátky na start! 🏍️');
   requestAnimationFrame(tick2);
 }
@@ -358,22 +359,21 @@ function stripeTex(a, b) { const c = document.createElement('canvas'); c.width =
 function buildObstacles() {
   const W = WALK_X - .4, list = { cone: [], barrel: [], barrier: [], stall: [], sign: [] };
   const add = (type, x, z) => { const d = { cone: [.3, .3, .75], barrel: [.38, .38, 1], barrier: [1.2, .2, 1], stall: [1.4, .9, 2.3], sign: [.35, .2, 2.4] }[type]; obs.push({ type, x, z, hw: d[0], hd: d[1], h: d[2] }); list[type].push([x, z]); };
-  let z = -LEN + 45, k = 0;
-  while (z < -25) {
-    const prog = (z + LEN) / LEN, side = k % 2 ? 1 : -1, pat = k % 5;
-    if (pat === 0) { // stěna sudů a kuželů s mezerou na střídavé straně
-      const gx = side * (W - 2.2); for (let x = -W; x <= W; x += 1.15) if (Math.abs(x - gx) > 1.9) add((Math.round(x) % 2 ? 'barrel' : 'cone'), x, z);
-    } else if (pat === 1) { // slalom kuželů
-      for (let i = 0; i < 4; i++) { const sd = (i % 2 ? 1 : -1) * side; for (let x = 0; x <= W; x += .9) add('cone', sd * (x - .6), z + i * 7); } z += 21;
-    } else if (pat === 2) { // tržní stánek + bariéry, mezera na druhé straně
-      add('stall', side * (W - 1.4), z); add('barrier', side * (W - 4.2), z); add('barrier', side * (W - 6.6), z); add('sign', -side * (W - .5), z + 3);
-    } else if (pat === 3) { // silniční práce – bariéry cik-cak
-      add('barrier', -W + 1.2, z); add('barrier', -W + 3.6, z); add('barrier', -W + 6, z); add('barrel', W - 3.4, z + .2);
-      add('barrier', W - 1.2, z + 8); add('barrier', W - 3.6, z + 8); add('barrier', W - 6, z + 8); add('barrel', -W + 3.4, z + 8.2); z += 8;
-    } else { // sudy ve dvou řadách se středovou mezerou
-      for (let x = 2; x <= W; x += 1.2) { add('barrel', x, z); add('barrel', -x, z + 5); } add('sign', 0, z + 10); z += 10;
-    }
-    z += THREE.MathUtils.lerp(32, 15, prog); k++;
+  // vzdálenost od startu s: 0–180 m volno (~10 s plného plynu), pak postupně těžší vzory
+  const S0 = -LEN + 14, SEND = LEN - 30, order = ['single', 'single', 'single', 'wall', 'wall', 'stall', 'stall', 'slalom', 'slalom', 'zigzag', 'zigzag', 'double'];
+  const mix = ['wall', 'stall', 'slalom', 'zigzag', 'double'];
+  const spacing = d => d < SEND * 2 / 3 ? 55 : THREE.MathUtils.lerp(55, 15, (d - SEND * 2 / 3) / (SEND / 3));
+  let d = 180, k = 0;
+  while (d < SEND) {
+    const z = S0 + d, side = k % 2 ? 1 : -1, pat = k < order.length ? order[k] : mix[k % mix.length];
+    const gap = THREE.MathUtils.lerp(5.2, 3.2, d / SEND); let len = 0;
+    if (pat === 'single') add(k % 2 ? 'barrel' : 'cone', side * 2.5, z);
+    else if (pat === 'wall') { const gx = side * (W - gap / 2 - .3); for (let x = -W; x <= W; x += 1.15) if (Math.abs(x - gx) > gap / 2 + .3) add(Math.round(x) % 2 ? 'barrel' : 'cone', x, z); }
+    else if (pat === 'stall') { add('stall', side * (W - 1.4), z); add('barrier', side * (W - 4.2), z); if (gap < 4.6) add('barrier', side * (W - 6.6), z); add('sign', -side * (W - .5), z + 3); }
+    else if (pat === 'slalom') { const n = d < SEND * 2 / 3 ? 2 : 4; for (let i = 0; i < n; i++) { const sd = (i % 2 ? 1 : -1) * side; for (let x = 0; x <= W; x += .9) if (x >= gap - 2.4) add('cone', sd * (x - .6), z + i * 9); } len = (n - 1) * 9; }
+    else if (pat === 'zigzag') { const g = gap + 1; [[-1, 0], [1, 10]].forEach(([sd, dz]) => { for (let x = W - 1.2; x > -W + g; x -= 2.4) add('barrier', sd * x * -1 * -1 * (sd < 0 ? 1 : 1) * 1, z + dz); }); len = 10; }
+    else { for (let x = gap / 2 + .4; x <= W; x += 1.2) { add('barrel', x, z); add('barrel', -x, z + 6); } add('sign', 0, z + 12); len = 12; }
+    d += len + spacing(d); k++;
   }
   const o3 = new THREE.Object3D();
   const inst = (geo, mat, arr, y, sx = 1) => { if (!arr.length) return; const m = new THREE.InstancedMesh(geo, mat, arr.length); arr.forEach(([x, z], i) => { o3.position.set(x, y, z); o3.rotation.set(0, 0, 0); o3.scale.setScalar(sx); o3.updateMatrix(); m.setMatrixAt(i, o3.matrix); }); m.castShadow = true; scene.add(m); };
@@ -433,7 +433,7 @@ function tick2(now) {
   sun.position.set(gp.x + 12, 25, gp.z + 8); sun.target.position.copy(gp);
   if (eng) { const f = 45 + speed * 7; eng.o.frequency.value = f; eng.o2.frequency.value = f * .5; }
   renderer.render(scene, camera);
-  window.__l2 = { x: gp.x, z: gp.z, speed, lives, done, obs: obs.length, raceT };
+  window.__obs = obs; window.__l2 = { x: gp.x, z: gp.z, speed, lives, done, obs: obs.length, raceT };
   requestAnimationFrame(tick2);
 }
 if (LEVEL === 2) startLevel2();
