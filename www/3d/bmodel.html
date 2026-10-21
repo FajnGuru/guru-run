@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#888}</style></head><body>
+<script type="importmap">{"imports":{"three":"../assets/vendor/three.module.min.js"}}</script>
+<script type="module">
+import * as THREE from 'three'; import { buildMotorbike } from '../js/motorbike-model.js';
+const q = new URLSearchParams(location.search), ang = { front: 0, side: -Math.PI / 2, back: Math.PI, side2: Math.PI / 2, q: -0.5 }[q.get('v') || 'front'];
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(400, 450); document.body.appendChild(r.domElement);
+const s = new THREE.Scene(); s.background = new THREE.Color(0xffffff);
+s.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.6)); const d = new THREE.DirectionalLight(0xffffff, 1.8); d.position.set(2, 4, 5); s.add(d);
+const b = buildMotorbike(); b.root.rotation.y = ang; s.add(b.root);
+const c = new THREE.OrthographicCamera(-1.35, 1.35, 1.52, -1.52, .1, 20); c.position.set(0, 1.25, 10); c.lookAt(0, 1.25, 0);
+r.render(s, c); document.title = 'done';
+</script></body></html>
