@@ -1,4 +1,4 @@
-// Procedurální model Guru (husky) — PR4 tail: denser fur clumps + run/idle sway
+// Procedurální model Guru (husky) — PR5 outfit: buttons, pockets, readable seams
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
@@ -198,7 +198,11 @@ export function buildGuru() {
     jeans: std(0x2a4a86, .92),
     jeansDark: std(0x1e3766, .93),
     jeansMid: std(0x355894, .91),
-    seam: std(0xd8d4cc, .7),
+    jeansStitch: std(0xc4a46a, .55),
+    seam: std(0xc8c2b6, .65),
+    seamDark: std(0xb0a898, .72),
+    button: std(0xe8e4dc, .35, { metalness: .45 }),
+    buttonRim: std(0xb8b0a0, .4, { metalness: .55 }),
     leather: std(0x6a3b20, .62, { metalness: .08 }),
     leatherDark: std(0x4a2814, .68, { metalness: .06 }),
     metal: std(0xb5a078, .28, { metalness: .78 }),
@@ -248,21 +252,35 @@ export function buildGuru() {
     body.add(mesh(S(.13, 14, 12), mat.shirt, [s * .29, 1.72, .02], [1.15, .75, 1]));
     body.add(mesh(S(.1, 12, 10), mat.shirtShade, [s * .18, 1.48, .22], [1.1, .85, .7]));
   });
-  // límec + placket
+  // límec + placket v2 — thicker seams + readable buttons at distance
   [-1, 1].forEach(s => body.add(mesh(new THREE.ConeGeometry(.11, .2, 3), mat.shirt, [s * .09, 1.78, .17], [1, 1, .4], [Math.PI - .3, 0, s * .6])));
   body.add(mesh(new THREE.TorusGeometry(.16, .04, 8, 20), mat.shirt, [0, 1.81, .02], null, [Math.PI / 2 - .25, 0, 0]));
-  body.add(mesh(new THREE.BoxGeometry(.07, .68, .025), mat.shirtShade, [0, 1.45, .33]));
-  body.add(mesh(new THREE.BoxGeometry(.01, .68, .008), mat.seam, [-.028, 1.45, .34]));
-  body.add(mesh(new THREE.BoxGeometry(.01, .68, .008), mat.seam, [.028, 1.45, .34]));
-  for (let i = 0; i < 5; i++) {
-    body.add(mesh(new THREE.CylinderGeometry(.016, .016, .012, 8), std(0xd8d8d8, .4, { metalness: .4 }), [0, 1.7 - i * .13, .345], null, [Math.PI / 2, 0, 0]));
-  }
-  // náprsní kapsa + boční švy košile
-  body.add(mesh(new THREE.BoxGeometry(.14, .12, .02), mat.shirtShade, [.16, 1.52, .32]));
-  body.add(mesh(new THREE.BoxGeometry(.12, .025, .012), mat.seam, [.16, 1.57, .332]));
-  [-1, 1].forEach(s => body.add(mesh(new THREE.BoxGeometry(.01, .62, .008), mat.seam, [s * .33, 1.42, .05], null, [0, s * .4, 0])));
+  body.add(mesh(new THREE.BoxGeometry(.08, .7, .028), mat.shirtShade, [0, 1.45, .33]));
+  body.add(mesh(new THREE.BoxGeometry(.018, .7, .01), mat.seamDark, [-.032, 1.45, .345]));
+  body.add(mesh(new THREE.BoxGeometry(.018, .7, .01), mat.seamDark, [.032, 1.45, .345]));
+  // collar button + 5 placket buttons (rim + face for distance pop)
+  const addBtn = (x, y, z, r = .02) => {
+    body.add(mesh(new THREE.CylinderGeometry(r * 1.15, r * 1.15, .008, 10), mat.buttonRim, [x, y, z], null, [Math.PI / 2, 0, 0]));
+    body.add(mesh(new THREE.CylinderGeometry(r, r, .012, 10), mat.button, [x, y, z + .004], null, [Math.PI / 2, 0, 0]));
+    body.add(mesh(SH(r * .35, 6, 6), mat.hlSoft, [x - r * .25, y + r * .2, z + .012]));
+  };
+  addBtn(0, 1.76, .35, .018); // collar
+  for (let i = 0; i < 5; i++) addBtn(0, 1.68 - i * .125, .352, .02);
+  // náprsní kapsa v2 — flap, stitch frame, pocket button
+  body.add(mesh(new THREE.BoxGeometry(.155, .13, .024), mat.shirtShade, [.17, 1.5, .325]));
+  body.add(mesh(new THREE.BoxGeometry(.145, .035, .016), mat.seam, [.17, 1.56, .34])); // flap
+  body.add(mesh(new THREE.BoxGeometry(.15, .012, .008), mat.seamDark, [.17, 1.435, .338])); // bottom stitch
+  [-1, 1].forEach(s => body.add(mesh(new THREE.BoxGeometry(.012, .12, .008), mat.seamDark, [.17 + s * .068, 1.5, .338])));
+  addBtn(.17, 1.545, .35, .012);
+  // boční švy košile — thicker for distance
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.016, .64, .01), mat.seamDark, [s * .335, 1.42, .05], null, [0, s * .4, 0]));
+    body.add(mesh(new THREE.BoxGeometry(.008, .64, .006), mat.seam, [s * .34, 1.42, .06], null, [0, s * .4, 0]));
+  });
   // spodní lem košile přes pásek
   body.add(mesh(lathe([[.28, 1.12], [.33, 1.14], [.335, 1.2], [.3, 1.22], [0, 1.22]], 24), mat.shirtShade));
+  // hem stitch line
+  body.add(mesh(new THREE.TorusGeometry(.325, .01, 6, 24), mat.seamDark, [0, 1.145, 0], [1, 1, 1.05], [Math.PI / 2, 0, 0]));
 
   // opasek — vrstvy + poutka (ne holý válec)
   body.add(mesh(new THREE.TorusGeometry(.312, .038, 8, 28), mat.leather, [0, 1.1, 0], [1, 1, 1.02], [Math.PI / 2, 0, 0]));
@@ -276,16 +294,33 @@ export function buildGuru() {
   body.add(mesh(new THREE.BoxGeometry(.05, .08, .02), mat.metal, [0, 1.1, .36], null, [0, 0, Math.PI / 2]));
   body.add(mesh(new THREE.BoxGeometry(.09, .06, .035), mat.leather, [.12, 1.1, .33]));
 
-  // boky džíny — yoke, kapsy, švy
+  // boky džíny v2 — yoke, readable pockets + contrast stitches
   body.add(mesh(lathe([[0, .8], [.28, .82], [.34, .92], [.345, 1.05], [.33, 1.1], [0, 1.1]], 28), mat.jeans));
   body.add(mesh(lathe([[.2, 1.0], [.34, 1.02], [.345, 1.08], [.3, 1.1], [0, 1.1]], 24), mat.jeansDark)); // yoke
-  body.add(mesh(new THREE.BoxGeometry(.014, .26, .012), mat.stitch, [0, .94, .34])); // fly
+  // yoke stitch
+  body.add(mesh(new THREE.TorusGeometry(.33, .008, 5, 20, Math.PI), mat.jeansStitch, [0, 1.02, .05], [1, .35, 1], [Math.PI / 2, 0, 0]));
+  // fly + waist button
+  body.add(mesh(new THREE.BoxGeometry(.02, .28, .014), mat.jeansStitch, [0, .94, .345]));
+  body.add(mesh(new THREE.BoxGeometry(.012, .28, .008), mat.stitch, [0, .94, .352]));
+  addBtn(0, 1.06, .355, .016);
   [-1, 1].forEach(s => {
-    body.add(mesh(new THREE.BoxGeometry(.16, .14, .03), mat.jeansDark, [s * .2, .96, .3], null, [0, 0, s * .08]));
-    body.add(mesh(new THREE.BoxGeometry(.14, .03, .012), mat.stitch, [s * .2, 1.02, .318]));
-    body.add(mesh(new THREE.BoxGeometry(.01, .28, .01), mat.stitch, [s * .34, .94, .02], null, [0, s * .5, 0])); // side seam
-    // zadní kapsa náznak
-    body.add(mesh(new THREE.BoxGeometry(.14, .12, .025), mat.jeansMid, [s * .16, .98, -.3], null, [0, 0, -s * .1]));
+    // front pocket bag + opening stitch
+    body.add(mesh(new THREE.BoxGeometry(.17, .15, .032), mat.jeansDark, [s * .2, .95, .3], null, [0, 0, s * .08]));
+    body.add(mesh(new THREE.BoxGeometry(.155, .018, .012), mat.jeansStitch, [s * .2, 1.02, .322]));
+    body.add(mesh(new THREE.BoxGeometry(.155, .01, .008), mat.stitch, [s * .2, .88, .318]));
+    // coin pocket (right)
+    if (s > 0) {
+      body.add(mesh(new THREE.BoxGeometry(.07, .06, .02), mat.jeansMid, [.14, 1.0, .318]));
+      body.add(mesh(new THREE.BoxGeometry(.06, .01, .008), mat.jeansStitch, [.14, 1.025, .33]));
+    }
+    // side seam (thicker dual line)
+    body.add(mesh(new THREE.BoxGeometry(.016, .3, .012), mat.jeansStitch, [s * .345, .94, .02], null, [0, s * .5, 0]));
+    body.add(mesh(new THREE.BoxGeometry(.008, .3, .008), mat.stitch, [s * .35, .94, .03], null, [0, s * .5, 0]));
+    // back pocket + bar-tack stitches
+    body.add(mesh(new THREE.BoxGeometry(.15, .13, .028), mat.jeansMid, [s * .16, .97, -.305], null, [0, 0, -s * .1]));
+    body.add(mesh(new THREE.BoxGeometry(.13, .014, .01), mat.jeansStitch, [s * .16, 1.03, -.318]));
+    body.add(mesh(new THREE.BoxGeometry(.13, .01, .008), mat.jeansStitch, [s * .16, .91, -.318]));
+    [-1, 1].forEach(e => body.add(mesh(new THREE.BoxGeometry(.012, .11, .008), mat.jeansStitch, [s * .16 + e * .055, .97, -.32])));
   });
 
   // --- nohy — children[0]=kalhoty, [1]=lem, [2]=foot ---
@@ -317,8 +352,11 @@ export function buildGuru() {
       foot.add(mesh(S(.018, 6, 6), mat.furGrey, [x, -.02, .34], [1, .5, 1.2]));
     });
     // šev + koleno jako děti pant mesh (neposouvají children[2])
-    pant.add(mesh(new THREE.BoxGeometry(.012, .72, .01), mat.stitch, [s * .155, -.38, 0]));
+    pant.add(mesh(new THREE.BoxGeometry(.016, .72, .012), mat.jeansStitch, [s * .155, -.38, 0]));
+    pant.add(mesh(new THREE.BoxGeometry(.008, .72, .008), mat.stitch, [s * .162, -.38, .008]));
     pant.add(mesh(S(.09, 10, 8), mat.jeansMid, [0, -.35, .06], [1.15, .7, .9]));
+    // cuff stitch ring readability
+    pant.add(mesh(new THREE.TorusGeometry(.155, .008, 5, 14), mat.jeansStitch, [0, -.76, 0], null, [Math.PI / 2, 0, 0]));
     body.add(g);
     return g;
   });
@@ -330,7 +368,10 @@ export function buildGuru() {
     g.rotation.z = s * .14;
     g.add(mesh(lathe([[0, 0], [.12, -.02], [.115, -.28], [.11, -.52], [.12, -.62], [.125, -.66], [0, -.66]], 18), mat.shirt));
     g.add(mesh(new THREE.TorusGeometry(.118, .02, 6, 14), mat.shirtShade, [0, -.64, 0], null, [Math.PI / 2, 0, 0]));
-    g.add(mesh(new THREE.BoxGeometry(.01, .55, .008), mat.seam, [s * .1, -.32, 0]));
+    g.add(mesh(new THREE.BoxGeometry(.014, .55, .01), mat.seamDark, [s * .1, -.32, 0]));
+    // cuff button
+    g.add(mesh(new THREE.CylinderGeometry(.014, .014, .01, 8), mat.button, [s * .1, -.62, .08], null, [Math.PI / 2, 0, 0]));
+    g.add(mesh(new THREE.CylinderGeometry(.017, .017, .006, 8), mat.buttonRim, [s * .1, -.62, .075], null, [Math.PI / 2, 0, 0]));
     // paw hand — palm + fingers (readable silhouette)
     const hand = new THREE.Group();
     hand.position.set(0, -.76, .02);
