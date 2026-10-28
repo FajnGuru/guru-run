@@ -785,19 +785,50 @@ function buildObstacles() {
   const W = WALK_X - .4, list = { cone: [], barrel: [], barrier: [], stall: [], sign: [] };
   const add = (type, x, z) => { const d = { cone: [.3, .3, .75], barrel: [.38, .38, 1], barrier: [1.2, .2, 1], stall: [1.4, .9, 2.3], sign: [.35, .2, 2.4] }[type]; obs.push({ type, x, z, hw: d[0], hd: d[1], h: d[2] }); list[type].push([x, z]); };
   // vzdálenost od startu s: 0–180 m volno (~10 s plného plynu), pak postupně těžší vzory
+  // MIN_LANE: vždy projetelný pruh na vozovce (±HALF_W), ne až na chodníku
+  const MIN_LANE = 3.6;
   const S0 = -LEN + 14, SEND = LEN - 30, order = ['single', 'single', 'single', 'wall', 'wall', 'stall', 'stall', 'slalom', 'slalom', 'zigzag', 'zigzag', 'double'];
   const mix = ['wall', 'stall', 'slalom', 'zigzag', 'double'];
   const spacing = d => d < SEND * 2 / 3 ? 55 : THREE.MathUtils.lerp(55, 15, (d - SEND * 2 / 3) / (SEND / 3));
   let d = 180, k = 0;
   while (d < SEND) {
     const z = S0 + d, side = k % 2 ? 1 : -1, pat = k < order.length ? order[k] : mix[k % mix.length];
-    const gap = THREE.MathUtils.lerp(5.2, 3.2, d / SEND); let len = 0;
+    const gap = Math.max(MIN_LANE, THREE.MathUtils.lerp(5.2, 3.6, d / SEND)); let len = 0;
     if (pat === 'single') add(k % 2 ? 'barrel' : 'cone', side * 2.5, z);
-    else if (pat === 'wall') { const gx = side * (W - gap / 2 - .3); for (let x = -W; x <= W; x += 1.15) if (Math.abs(x - gx) > gap / 2 + .3) add(Math.round(x) % 2 ? 'barrel' : 'cone', x, z); }
-    else if (pat === 'stall') { add('stall', side * (W - 1.4), z); add('barrier', side * (W - 4.2), z); if (gap < 4.6) add('barrier', side * (W - 6.6), z); add('sign', -side * (W - .5), z + 3); }
-    else if (pat === 'slalom') { const n = d < SEND * 2 / 3 ? 2 : 4; for (let i = 0; i < n; i++) { const sd = (i % 2 ? 1 : -1) * side; for (let x = 0; x <= W; x += .9) if (x >= gap - 2.4) add('cone', sd * (x - .6), z + i * 9); } len = (n - 1) * 9; }
-    else if (pat === 'zigzag') { const g = gap + 1; [[-1, 0], [1, 10]].forEach(([sd, dz]) => { for (let x = W - 1.2; x > -W + g; x -= 2.4) add('barrier', sd * x * -1 * -1 * (sd < 0 ? 1 : 1) * 1, z + dz); }); len = 10; }
-    else { for (let x = gap / 2 + .4; x <= W; x += 1.2) { add('barrel', x, z); add('barrel', -x, z + 6); } add('sign', 0, z + 12); len = 12; }
+    else if (pat === 'wall') {
+      // mezera na vozovce (střídavě L/P od středu), ne u krajního chodníku
+      const gx = side * Math.min(HALF_W - gap / 2 - .15, 2.6);
+      for (let x = -W; x <= W; x += 1.15) if (Math.abs(x - gx) > gap / 2 + .4) add(Math.round(x) % 2 ? 'barrel' : 'cone', x, z);
+    }
+    else if (pat === 'stall') {
+      // jen jedna strana vozovky + max jedna bariéra; druhá polovina volná
+      add('stall', side * (HALF_W - .5), z);
+      add('barrier', side * (HALF_W - 2.7), z);
+      add('sign', -side * (W - .5), z + 3);
+    }
+    else if (pat === 'slalom') {
+      const n = d < SEND * 2 / 3 ? 2 : 4;
+      for (let i = 0; i < n; i++) {
+        const sd = (i % 2 ? 1 : -1) * side;
+        // kužely od krajnice dovnitř; středový pruh ~gap zůstane volný
+        for (let x = gap * .55; x <= W; x += 1.0) add('cone', sd * x, z + i * 9);
+      }
+      len = (n - 1) * 9;
+    }
+    else if (pat === 'zigzag') {
+      // bariéry zakryjí jednu stranu; na druhé nech pruh `gap` uvnitř ±HALF_W
+      const lane = Math.max(MIN_LANE, gap);
+      [[-1, 0], [1, 10]].forEach(([sd, dz]) => {
+        const clearLo = sd > 0 ? HALF_W - lane : -HALF_W;
+        const clearHi = sd > 0 ? HALF_W : -HALF_W + lane;
+        for (let x = -W + 1.2; x <= W - 1.2; x += 2.45) {
+          if (x + 1.25 > clearLo && x - 1.25 < clearHi) continue; // nepřekrývej volný pruh
+          add('barrier', x, z + dz);
+        }
+      });
+      len = 10;
+    }
+    else { for (let x = gap / 2 + .5; x <= W; x += 1.3) { add('barrel', x, z); add('barrel', -x, z + 6); } add('sign', 0, z + 12); len = 12; }
     d += len + spacing(d); k++;
   }
   const o3 = new THREE.Object3D();
