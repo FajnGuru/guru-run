@@ -45,6 +45,10 @@ function applyGfx(mode, { persist = true } = {}) {
   resize();
 }
 
+const CTRL_KEY = 'guru-run-ctrl';
+const readCtrl = () => { try { return localStorage.getItem(CTRL_KEY) === 'arrows' ? 'arrows' : 'joy'; } catch { return 'joy'; } };
+let ctrlMode = readCtrl();
+
 const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 });
 // --- ulice ---
 const LEN = 800, HALF_W = 5, WALK_X = HALF_W + 3.2;
@@ -205,18 +209,72 @@ window.__bones = () => ({ bones, lives, total: bonePts.length });
 // --- ovládání ---
 const keys = {}; addEventListener('keydown', e => keys[e.code] = true); addEventListener('keyup', e => keys[e.code] = false);
 const joy = document.getElementById('joy'), knob = document.getElementById('knob'), runB = document.getElementById('run');
+const pad = document.getElementById('pad');
 let jx = 0, jy = 0, jid = null, runTouch = false;
-const jmove = e => { const r = joy.getBoundingClientRect(); let dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2; const m = Math.hypot(dx, dy), max = r.width / 2; if (m > max) { dx *= max / m; dy *= max / m; } jx = dx / max; jy = dy / max; knob.style.transform = `translate(${dx}px,${dy}px)`; };
-joy.addEventListener('pointerdown', e => { jid = e.pointerId; joy.setPointerCapture(jid); jmove(e); });
+const arrowHeld = { up: false, down: false, left: false, right: false };
+const syncArrowStick = () => {
+  if (ctrlMode !== 'arrows') return;
+  jy = (arrowHeld.down ? 1 : 0) - (arrowHeld.up ? 1 : 0);
+  jx = (arrowHeld.right ? 1 : 0) - (arrowHeld.left ? 1 : 0);
+};
+const jmove = e => {
+  if (ctrlMode !== 'joy') return;
+  const r = joy.getBoundingClientRect(); let dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2;
+  const m = Math.hypot(dx, dy), max = r.width / 2; if (m > max) { dx *= max / m; dy *= max / m; }
+  jx = dx / max; jy = dy / max; knob.style.transform = `translate(${dx}px,${dy}px)`;
+};
+joy.addEventListener('pointerdown', e => { if (ctrlMode !== 'joy') return; jid = e.pointerId; joy.setPointerCapture(jid); jmove(e); });
 joy.addEventListener('pointermove', e => e.pointerId === jid && jmove(e));
-const jend = e => { if (e.pointerId !== jid) return; jid = null; jx = jy = 0; knob.style.transform = ''; };
+const jend = e => { if (e.pointerId !== jid) return; jid = null; if (ctrlMode === 'joy') { jx = jy = 0; knob.style.transform = ''; } };
 joy.addEventListener('pointerup', jend); joy.addEventListener('pointercancel', jend);
+if (pad) {
+  pad.querySelectorAll('[data-dir]').forEach(btn => {
+    const dir = btn.getAttribute('data-dir');
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (ctrlMode !== 'arrows') return;
+      btn.setPointerCapture(e.pointerId);
+      arrowHeld[dir] = true;
+      btn.classList.add('on');
+      syncArrowStick();
+    });
+    const end = () => {
+      if (!arrowHeld[dir]) return;
+      arrowHeld[dir] = false;
+      btn.classList.remove('on');
+      syncArrowStick();
+    };
+    btn.addEventListener('pointerup', end);
+    btn.addEventListener('pointercancel', end);
+  });
+}
 runB.addEventListener('pointerdown', e => { if (LEVEL === 2) { runTouch = true; runB.classList.add('on'); runB.setPointerCapture(e.pointerId); return; } runTouch = !runTouch; runB.classList.toggle('on', runTouch); });
 ['pointerup', 'pointercancel'].forEach(t => runB.addEventListener(t, () => { if (LEVEL === 2) { runTouch = false; runB.classList.remove('on'); } }));
 if (LEVEL === 2) runB.textContent = 'Plyn';
 const jumpB = document.getElementById('jump'); let jumpTouch = false;
 jumpB.addEventListener('pointerdown', e => { jumpTouch = true; jumpB.classList.add('on'); jumpB.setPointerCapture(e.pointerId); });
 ['pointerup', 'pointercancel'].forEach(t => jumpB.addEventListener(t, () => { jumpTouch = false; jumpB.classList.remove('on'); }));
+
+function syncCtrlUi() {
+  document.querySelectorAll('[data-ctrl][role=radio]').forEach(btn => {
+    btn.setAttribute('aria-checked', btn.getAttribute('data-ctrl') === ctrlMode ? 'true' : 'false');
+  });
+  document.body.classList.toggle('ctrl-joy', ctrlMode === 'joy');
+  document.body.classList.toggle('ctrl-arrows', ctrlMode === 'arrows');
+}
+function zeroStick() {
+  jx = jy = 0; jid = null;
+  if (knob) knob.style.transform = '';
+  arrowHeld.up = arrowHeld.down = arrowHeld.left = arrowHeld.right = false;
+  document.querySelectorAll('#pad button').forEach(b => b.classList.remove('on'));
+}
+function applyCtrl(mode, { persist = true } = {}) {
+  ctrlMode = mode === 'arrows' ? 'arrows' : 'joy';
+  if (persist) try { localStorage.setItem(CTRL_KEY, ctrlMode); } catch {}
+  zeroStick();
+  syncCtrlUi();
+}
+
 const over = document.getElementById('over');
 function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonesTotal ?? bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; over.classList.add('on'); }
 let raceT = 0; const fmtT = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor(t * 10 % 10)}`;
@@ -231,6 +289,10 @@ addEventListener('resize', resize); visualViewport && visualViewport.addEventLis
 applyGfx(gfxMode, { persist: false });
 document.querySelectorAll('#gfx [data-gfx]').forEach(btn => {
   btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); applyGfx(btn.getAttribute('data-gfx')); });
+});
+applyCtrl(ctrlMode, { persist: false });
+document.querySelectorAll('#ctrl [data-ctrl]').forEach(btn => {
+  btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); applyCtrl(btn.getAttribute('data-ctrl')); });
 });
 
 // Mobile-friendly square fullscreen toggle (Fullscreen API + webkit)
