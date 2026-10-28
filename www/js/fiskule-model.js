@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — PR8 scarf+vest: swaying tails, buttons/pockets
+// Procedurální model Fiškule (zaječice) — PR9 paws: readable sole/pads/toes (foot=children[2])
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -169,6 +169,11 @@ export function buildFiskule() {
     scarfDark: std(0x8a1612, .88),
     scarfDeep: std(0x6a100e, .9),
     leather: std(0x5a3a22, .65, { metalness: .08 }),
+    boot: std(0x4a2e1a, .7, { metalness: .06 }),
+    bootDark: std(0x2e1a10, .75),
+    bootLight: std(0x6a4230, .65),
+    pawPad: std(0xd4a090, .75),
+    pawSole: std(0xb87868, .82),
     metal: std(0xc4a060, .3, { metalness: .72 }),
     brass: std(0xe0b84a, .22, { metalness: .9, emissive: 0x3a2a08, emissiveIntensity: .15 }),
     brassDark: std(0xa07828, .3, { metalness: .85, emissive: 0x2a1e06, emissiveIntensity: .08 }),
@@ -299,7 +304,7 @@ export function buildFiskule() {
   // front fly seam
   body.add(mesh(new THREE.BoxGeometry(.02, .14, .02), mat.shortsDark, [0, .68, .34]));
 
-  // nohy: [0] šortky, [1] cargo kapsa, [2] foot  (animateGuru foot index)
+  // nohy: [0] šortky, [1] cargo kapsa, [2] foot  (animateGuru + motorbike — DO NOT reorder)
   const legs = [-1, 1].map(s => {
     const g = new THREE.Group();
     g.position.set(s * .155, .66, 0);
@@ -312,13 +317,35 @@ export function buildFiskule() {
     pocket.add(mesh(new THREE.BoxGeometry(.1, .16, .1), mat.shortsDark, [0, 0, 0]));
     pocket.add(mesh(new THREE.BoxGeometry(.105, .045, .04), mat.shortsLight, [0, .085, .02], null, [.2, 0, 0]));
     pocket.add(mesh(new THREE.CylinderGeometry(.01, .01, .01, 6), mat.brass, [0, .05, .055], null, [Math.PI / 2, 0, 0]));
+    // foot group MUST stay children[2] — all paw/boot meshes live inside
     const foot = new THREE.Group();
     foot.position.set(0, -.58, .1);
     g.add(foot);
-    foot.add(mesh(new THREE.CapsuleGeometry(.08, .22, 4, 8), mat.fur, [0, .18, -.08]));
-    foot.add(mesh(S(.15, 14, 12), mat.fur, [0, 0, .02], [1, .55, 1.9]));
-    foot.add(mesh(S(.1, 12, 10), mat.furLight, [0, -.02, .2], [1, .5, 1]));
-    [-1, 0, 1].forEach(t => foot.add(mesh(S(.045, 8, 6), mat.fur, [t * .07, -.04, .28], [1, .7, 1.1])));
+    // ankle cuff / short boot top (reads separation from cargo shorts while running)
+    foot.add(mesh(new THREE.CylinderGeometry(.095, .11, .1, 12), mat.boot, [0, .22, -.06]));
+    foot.add(mesh(new THREE.TorusGeometry(.1, .018, 6, 14), mat.bootDark, [0, .27, -.06], null, [Math.PI / 2, 0, 0]));
+    foot.add(mesh(new THREE.BoxGeometry(.04, .03, .02), mat.brass, [0, .27, .04])); // buckle hint
+    // shin fur peek above cuff
+    foot.add(mesh(new THREE.CapsuleGeometry(.075, .14, 4, 8), mat.fur, [0, .32, -.08]));
+    // main paw / boot body — elongated for side silhouette
+    foot.add(mesh(S(.155, 14, 12), mat.boot, [0, .02, .02], [1.1, .55, 1.85]));
+    foot.add(mesh(S(.12, 12, 10), mat.bootLight, [0, .04, .08], [1.05, .45, 1.3]));
+    // cream toe fur peeking from boot opening
+    foot.add(mesh(S(.11, 12, 10), mat.furLight, [0, -.01, .22], [1.05, .5, 1.15]));
+    // dark sole plate (readable from side/behind)
+    foot.add(mesh(new THREE.BoxGeometry(.2, .035, .36), mat.bootDark, [0, -.075, .06]));
+    foot.add(mesh(new THREE.BoxGeometry(.18, .02, .1), mat.pawSole, [0, -.09, .22])); // toe sole
+    // main pad + toe pads
+    foot.add(mesh(S(.08, 10, 8), mat.pawPad, [0, -.055, .05], [1.35, .35, 1.15]));
+    [-.08, -.028, .028, .08].forEach((x, i) => {
+      const z = .28 + (i === 1 || i === 2 ? .02 : 0);
+      foot.add(mesh(S(.042, 8, 6), mat.fur, [x, -.02, z], [1, .7, 1.15]));
+      foot.add(mesh(S(.025, 6, 5), mat.pawPad, [x, -.05, z + .02], [1.1, .4, 1]));
+      // tiny claw tip for distance pop
+      foot.add(mesh(S(.012, 5, 4), mat.furLight, [x, -.025, z + .05], [1, .45, 1.3]));
+    });
+    // heel bump
+    foot.add(mesh(S(.07, 10, 8), mat.bootDark, [0, -.02, -.12], [1.05, .5, .7]));
     body.add(g);
     return g;
   });
