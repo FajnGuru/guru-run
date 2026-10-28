@@ -204,6 +204,43 @@ const holeAt = z => HOLES.some(h => z < h.z0 && z > h.z1);
 const camPos = new THREE.Vector3(0, 4, 8), tmp = new THREE.Vector3();
 function resize() { const v = window.visualViewport; if (v) { wrap.style.width = v.width + 'px'; wrap.style.height = v.height + 'px'; } const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); visualViewport && visualViewport.addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 300)); resize();
+
+// Mobile-friendly square fullscreen toggle (Fullscreen API + webkit)
+const fsBtn = document.getElementById('fs');
+const fsEl = document.getElementById('wrap') || document.documentElement;
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+function syncFullscreenUi() {
+  if (!fsBtn) return;
+  const on = isFullscreen();
+  fsBtn.classList.toggle('on', on);
+  fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  fsBtn.title = on ? 'Ukončit celou obrazovku' : 'Celá obrazovka';
+  // layout changes after enter/exit
+  setTimeout(resize, 50);
+}
+async function toggleFullscreen(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  try {
+    if (isFullscreen()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) await exit.call(document);
+    } else {
+      const req = fsEl.requestFullscreen || fsEl.webkitRequestFullscreen || fsEl.webkitRequestFullScreen;
+      if (req) await req.call(fsEl, { navigationUI: 'hide' });
+    }
+  } catch (err) {
+    console.warn('fullscreen', err);
+  }
+  syncFullscreenUi();
+}
+if (fsBtn) {
+  fsBtn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleFullscreen(e); });
+  fsBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+}
+['fullscreenchange', 'webkitfullscreenchange'].forEach(t => document.addEventListener(t, syncFullscreenUi));
+syncFullscreenUi();
 function updateFiskule(dt, now) {
   const gp = guru.position;
   if (fState === 'npc') return;
