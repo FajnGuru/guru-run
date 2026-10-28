@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — ear base for shared idle polish + prior props
+// Procedurální model Fiškule (zaječice) — PR6 ears: inner canal, rim fluff, short whiskers
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -177,11 +177,14 @@ export function buildFiskule() {
     needleRed: std(0xc41e1a, .35, { emissive: 0x4a0808, emissiveIntensity: .25 }),
     needleBlue: std(0x2a3a6a, .4, { emissive: 0x081020, emissiveIntensity: .1 }),
     nose: std(0xd77f86, .42, { emissive: 0x4a1820, emissiveIntensity: .08 }),
+    pinkDeep: std(0xd09088, .9),
+    whisker: std(0x3a2a20, .55),
     eyeW: std(0xffffff, .2),
     eyeRim: std(0x3a2818, .7),
     iris: std(0xffffff, .28, { map: irisTex, emissive: 0x2a1508, emissiveIntensity: .12 }),
     pupil: std(0x080808, .18),
     hl: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    hlSoft: new THREE.MeshBasicMaterial({ color: 0xfff0e8, transparent: true, opacity: .5 }),
     mouth: std(0x3a2220, .85),
   };
   const mesh = (g, m, p = [0, 0, 0], s, r) => {
@@ -358,31 +361,64 @@ export function buildFiskule() {
     e.add(mesh(SH(.01, 6, 6), mat.hl, [s * .02, -.012, .068]));
     // soft brow arc
     head.add(mesh(new THREE.CapsuleGeometry(.014, .09, 3, 6), mat.furDark, [s * .15, .155, .32], null, [0, 0, s * 1.15]));
-    // long upright ears — slight outward tip curve, pink inner, dark tips
+    // long upright ears v2 — inner canal, rim fluff, tip (tracked for shared idle twitch)
     const ear = new THREE.Group();
     ear.position.set(s * .12, .3, -.06);
     ear.rotation.set(-.08, s * .12, -s * .18);
     ear.userData.base = { x: ear.rotation.x, y: ear.rotation.y, z: ear.rotation.z };
     head.add(ear);
     // base fluff at skull
-    ear.add(mesh(SH(.12, 16, 12), mat.fur, [0, .06, 0], [1.1, .7, .55]));
+    ear.add(mesh(SH(.12, 16, 12), mat.fur, [0, .06, 0], [1.15, .75, .6]));
+    ear.add(mesh(SH(.07, 12, 10), mat.furLight, [s * .04, .08, .02], [.9, .7, .55]));
     // main shaft — taller, flatter depth
     ear.add(mesh(new THREE.CapsuleGeometry(.105, .78, 8, 16), mat.fur, [0, .48, 0], [.95, 1, .32]));
+    // soft outer rim (reads thickness from side)
+    ear.add(mesh(new THREE.CapsuleGeometry(.09, .7, 6, 12), mat.furDark, [0, .46, -.025], [1.05, 1, .18]));
     // tip bends slightly outward
     const tip = new THREE.Group();
     tip.position.set(0, .9, 0);
     tip.rotation.z = -s * .28;
     tip.rotation.x = -.12;
+    tip.userData.baseZ = tip.rotation.z;
+    tip.userData.baseX = tip.rotation.x;
     ear.add(tip);
     tip.add(mesh(new THREE.CapsuleGeometry(.095, .18, 6, 12), mat.fur, [0, .08, 0], [.9, 1, .3]));
     tip.add(mesh(SH(.1, 14, 12), mat.furDark, [0, .16, 0], [1.05, .95, .35]));
     tip.add(mesh(SH(.06, 12, 10), mat.furDark, [0, .26, 0], [.9, .75, .28]));
-    // pink inner canal (peach from turnaround)
+    tip.add(mesh(SH(.035, 8, 6), mat.fur, [s * .02, .22, .01], [.8, .7, .4])); // tip tuft
+    // pink inner + deeper canal fold
     ear.add(mesh(new THREE.CapsuleGeometry(.068, .62, 6, 12), mat.pink, [0, .46, .04], [.95, 1, .18]));
-    ear.add(mesh(SH(.055, 12, 10), mat.pink, [0, .12, .035], [1.1, .8, .35]));
+    ear.add(mesh(new THREE.CapsuleGeometry(.035, .4, 5, 8), mat.pinkDeep, [0, .42, .055], [1, 1, .35]));
+    ear.add(mesh(SH(.055, 12, 10), mat.pink, [0, .12, .035], [1.15, .85, .4]));
+    ear.add(mesh(SH(.03, 8, 6), mat.pinkDeep, [0, .1, .05], [1.2, .7, .45])); // canal pocket
+    // leading-edge rim fluff (mobile-friendly clumps)
+    ear.add(mesh(SH(.028, 8, 6), mat.furDark, [s * .07, .35, .02], [.75, 1.2, .45]));
+    ear.add(mesh(SH(.025, 8, 6), mat.furDark, [s * -.06, .5, .015], [.7, 1.1, .4]));
+    ear.add(mesh(SH(.022, 6, 6), mat.fur, [s * .05, .65, .02], [.65, 1, .4]));
+    ear.tip = tip;
     head.ears = head.ears || [];
     head.ears.push(ear);
   });
+  // short low-poly whiskers (3 per side) from cream muzzle
+  [-1, 1].forEach(s => {
+    [
+      [s * .14, -.14, .28, .18, -.05, .1, -.08],
+      [s * .12, -.17, .26, .22, -.02, .02, .05],
+      [s * .1, -.2, .24, .16, .04, -.08, .15],
+    ].forEach(([bx, by, bz, len, tiltY, tiltZ, tiltX]) => {
+      const w = new THREE.Mesh(
+        new THREE.CapsuleGeometry(.0035, len, 2, 4),
+        mat.whisker,
+      );
+      w.position.set(bx, by, bz);
+      w.rotation.set(tiltX, s * (.5 + tiltY), s * (.95 + tiltZ));
+      w.castShadow = false;
+      w.receiveShadow = false;
+      head.add(w);
+    });
+  });
+  // wetter nose HL (pairs with whiskers readability)
+  head.add(mesh(SH(.01, 6, 6), mat.hlSoft, [.012, -.08, .455]));
 
   // leather strap + brass aviator goggles on forehead (readable brass/glass)
   head.add(mesh(new THREE.TorusGeometry(.35, .032, 10, 36), mat.leather, [0, .16, -.01], [1.1, 1, 1.05], [Math.PI / 2 - .28, 0, 0]));
