@@ -1,6 +1,7 @@
-// Procedurální model SIKI (klokan) – PR1: hlava v2 (oči, uši, čupřina, úsměv)
-// API: buildSiki() → { root, body, head, arms, legs, tail }
+// Procedurální model SIKI (klokan) – PR2: srst + ocas v2 (canvas fur, muscular tail sway)
+// API: buildSiki() → { root, body, head, arms, legs, tail }; animateSiki(g, t, opts?)
 // DŮLEŽITÉ: legs[i].children[2] = foot group (motorbike pose).
+// Tail.segs = cascade segments; bike pose sets tail.rotation.x ≈ .25 (over seat).
 import * as THREE from 'three';
 
 function textTex(text, w, h, font, color = '#fff') {
@@ -10,31 +11,47 @@ function textTex(text, w, h, font, color = '#fff') {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-/** Soft brown fur grain for head (cached, mobile-friendly 96px). */
+/** Sandy/tawny kangaroo fur grain (cached, mobile-friendly 128px). */
+let _furMap, _muzzleMap, _irisMap;
 function makeFurMap() {
-  const s = 96, c = document.createElement('canvas');
+  const s = 128, c = document.createElement('canvas');
   c.width = c.height = s;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#c4a070';
+  // light brown base (turnaround sandy tawny)
+  ctx.fillStyle = '#c9955e';
   ctx.fillRect(0, 0, s, s);
-  for (let i = 0; i < 520; i++) {
+  // directional short fur strokes
+  for (let i = 0; i < 1100; i++) {
     const x = Math.random() * s, y = Math.random() * s;
-    const len = 2 + Math.random() * 8;
-    const ang = -0.55 + Math.random() * 1.1;
-    const g = 140 + ((Math.random() * 70) | 0);
-    ctx.strokeStyle = `rgb(${g},${g - 25},${g - 55})`;
-    ctx.lineWidth = 0.5 + Math.random();
+    const len = 2.5 + Math.random() * 10;
+    const ang = -0.65 + Math.random() * 1.3;
+    const lite = Math.random() > .55;
+    const r = lite ? 210 + ((Math.random() * 35) | 0) : 120 + ((Math.random() * 50) | 0);
+    const g = lite ? r - 35 : r - 40;
+    const b = lite ? r - 75 : r - 70;
+    ctx.strokeStyle = `rgba(${r},${g},${b},${.45 + Math.random() * .45})`;
+    ctx.lineWidth = 0.45 + Math.random() * 1.35;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
     ctx.stroke();
   }
+  // soft mottles
+  for (let i = 0; i < 50; i++) {
+    const x = Math.random() * s, y = Math.random() * s, rad = 3 + Math.random() * 12;
+    const rg = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    rg.addColorStop(0, 'rgba(160,100,50,.28)');
+    rg.addColorStop(1, 'rgba(180,120,60,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2, 2);
+  tex.repeat.set(2.4, 2.4);
   tex.needsUpdate = true;
   return tex;
 }
+function furMap() { return _furMap || (_furMap = makeFurMap()); }
 
 /** Cream muzzle fluff. */
 function makeMuzzleMap() {
@@ -87,18 +104,25 @@ function makeIrisMap() {
   tex.needsUpdate = true;
   return tex;
 }
+function muzzleMap() { return _muzzleMap || (_muzzleMap = makeMuzzleMap()); }
+function irisMap() { return _irisMap || (_irisMap = makeIrisMap()); }
 
 export function buildSiki() {
-  const furMap = makeFurMap();
-  const muzzleMap = makeMuzzleMap();
-  const irisMap = makeIrisMap();
+  const noise = furMap();
+  const muz = muzzleMap();
+  const iris = irisMap();
   const std = (c, r = .85, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, ...extra });
+  const furMat = (c, r = .96, bump = .05) => std(c, r, {
+    map: noise, roughnessMap: noise, bumpMap: noise, bumpScale: bump,
+  });
   const mat = {
-    fur: std(0xa8703f, .95, { map: furMap }),
-    furHead: std(0xb07a45, .92, { map: furMap }),
-    furLight: std(0xe8c9a0, .95, { map: muzzleMap }),
-    furFace: std(0xd4ae78, .93, { map: furMap }),
-    furDark: std(0x5a3418, .95),
+    fur: furMat(0xb88955, .96, .055),
+    furHead: furMat(0xb07a45, .94, .06),
+    furLight: std(0xe8c9a0, .95, { map: muz, roughnessMap: muz, bumpMap: muz, bumpScale: .04 }),
+    furFace: furMat(0xd4ae78, .94, .045),
+    furBelly: furMat(0xd8b07a, .97, .035),
+    furDark: furMat(0x5a3418, .95, .07),
+    furTail: furMat(0xa8703f, .95, .065),
     tuft: std(0x4a2a12, .9),
     pink: std(0xe8aea4, .88),
     pinkDeep: std(0xd08078, .9),
@@ -109,7 +133,7 @@ export function buildSiki() {
     nose: std(0x1a1414, .32, { metalness: .1, emissive: 0x1a1010, emissiveIntensity: .05 }),
     noseWet: std(0x0a0808, .14, { metalness: .2 }),
     eyeW: std(0xffffff, .28),
-    iris: std(0xffffff, .35, { map: irisMap }),
+    iris: std(0xffffff, .35, { map: iris }),
     pupil: std(0x080808, .2),
     eyeSocket: std(0x8a5a35, .95),
     brow: std(0x4a2a12, .9),
@@ -288,9 +312,82 @@ export function buildSiki() {
   // soft base mound under tuft
   tuft.add(mesh(SH(.1, 12, 10), mat.furDark, [0, 0, 0], [1.4, .55, 1.1]));
 
-  // dlouhý silný ocas
-  const tail = new THREE.Group(); tail.position.set(0, 1.0, -.35); body.add(tail);
-  for (let i = 0; i < 26; i++) { const t = i / 25; tail.add(mesh(S(.2 - t * .14, 12, 8), mat.fur, [0, -Math.pow(t, .8) * .92, -.12 - t * 1.35], [1, .95, 1.15])); }
+  // --- ocas v2: silný svalnatý klokaní ocas (base → tip), sedí přes sedlo na bike ---
+  // standing: hangs back/down; bike pose: K.tail.rotation.x ≈ .25 lays it over the seat
+  const tail = new THREE.Group();
+  tail.position.set(0, 1.05, -.32);
+  body.add(tail);
+
+  // base (hip attach) — thick muscular root
+  const t0 = new THREE.Group();
+  tail.add(t0);
+  t0.add(mesh(S(.22, 16, 12), mat.furTail, [0, -.02, -.08], [1.15, 1.05, 1.25]));
+  t0.add(mesh(S(.16, 14, 10), mat.fur, [.07, .02, -.06], [.95, .9, 1]));
+  t0.add(mesh(S(.14, 12, 10), mat.furDark, [-.06, .04, -.1], [.9, .85, .95]));
+  t0.add(mesh(S(.1, 10, 8), mat.furBelly, [0, -.08, -.04], [1.1, .7, .9])); // underside
+
+  // mid — long thick shaft
+  const t1 = new THREE.Group();
+  t1.position.set(0, -.12, -.28);
+  t0.add(t1);
+  t1.add(mesh(S(.2, 16, 12), mat.furTail, [0, -.06, -.16], [1.1, 1.15, 1.35]));
+  t1.add(mesh(S(.16, 14, 10), mat.fur, [0, -.14, -.34], [1.05, 1.1, 1.25]));
+  t1.add(mesh(S(.12, 12, 10), mat.fur, [.06, -.04, -.22], [.95, 1, 1.1]));
+  t1.add(mesh(S(.11, 12, 10), mat.furDark, [-.05, -.08, -.28], [.9, .95, 1]));
+  t1.add(mesh(S(.09, 10, 8), mat.furBelly, [0, -.18, -.2], [1.15, .65, 1]));
+  t1.add(mesh(S(.07, 8, 6), mat.fur, [.05, -.2, -.4], [.85, .8, .9])); // fluff clump
+
+  // tip — tapers + slight upward curl (reads over bike seat when rotated)
+  const t2 = new THREE.Group();
+  t2.position.set(0, -.22, -.48);
+  t1.add(t2);
+  t2.add(mesh(S(.13, 14, 10), mat.furTail, [0, -.04, -.12], [1.05, 1.1, 1.2]));
+  t2.add(mesh(S(.1, 12, 10), mat.fur, [0, .02, -.26], [1, 1.05, 1.15]));
+  t2.add(mesh(S(.07, 10, 8), mat.fur, [0, .08, -.38], [.95, .95, 1]));
+  t2.add(mesh(S(.05, 8, 6), mat.furDark, [0, .12, -.46], [1, .85, .9])); // tip tuft
+  t2.add(mesh(S(.045, 8, 6), mat.fur, [.03, .06, -.34], [.85, .8, .85]));
+  t2.add(mesh(S(.04, 8, 6), mat.furBelly, [0, -.02, -.3], [1.1, .6, .9]));
+
+  // cascade segs for animateSiki sway
+  tail.segs = [t0, t1, t2];
+  // standing rest: slight downward hang; bike bumps root.x to ~.25
+  t0.userData.base = { x: .08, y: 0, z: 0 };
+  t1.userData.base = { x: .18, y: 0, z: 0 };
+  t2.userData.base = { x: -.22, y: 0, z: 0 }; // tip curls up
+  t0.rotation.x = .08;
+  t1.rotation.x = .18;
+  t2.rotation.x = -.22;
 
   return { root, body, head, arms, legs, tail };
+}
+
+/** Subtle idle / motion tail sway (cascade). opts: { bike?: boolean, amp?: number }.
+ *  Safe with game3d/motorbike that also set tail.rotation.y / .x — we blend segs only
+ *  unless opts.driveRoot is true. */
+export function animateSiki(g, t, opts = {}) {
+  if (!g?.tail) return;
+  const dt = t.dt ?? 0.016;
+  const now = t.now ?? 0;
+  const lerp = (cur, tgt, rate) => cur + (tgt - cur) * Math.min(1, dt * rate);
+  const amp = opts.amp ?? (opts.bike ? .12 : .22);
+  const sp = opts.bike ? 200 : 320;
+  const wave = Math.sin(now / sp);
+  const wave2 = Math.sin(now / (sp * 1.35) + .7);
+  if (opts.driveRoot) {
+    const baseX = opts.bike ? .25 : 0;
+    g.tail.rotation.y = lerp(g.tail.rotation.y, wave * amp, 7);
+    g.tail.rotation.x = lerp(g.tail.rotation.x, baseX + wave2 * amp * .25, 6);
+    g.tail.rotation.z = lerp(g.tail.rotation.z || 0, wave * amp * .2, 6);
+  }
+  if (g.tail.segs) {
+    g.tail.segs.forEach((seg, i) => {
+      const b = seg.userData.base || { x: 0, y: 0, z: 0 };
+      const lag = i * .55;
+      const w = Math.sin(now / sp - lag);
+      const a = amp * (.55 + i * .35);
+      seg.rotation.y = lerp(seg.rotation.y, b.y + w * a, 8);
+      seg.rotation.x = lerp(seg.rotation.x, b.x + Math.sin(now / (sp * 1.2) - lag) * a * .35, 7);
+      seg.rotation.z = lerp(seg.rotation.z, b.z + w * a * .25, 7);
+    });
+  }
 }
