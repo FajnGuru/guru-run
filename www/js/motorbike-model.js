@@ -1,4 +1,4 @@
-// Procedurální retro motorka (café racer / scrambler) – PR6: tank + SIKI logo
+// Procedurální retro motorka (café racer / scrambler) – PR7: spoked wheels, exhaust, shocks, engine
 import * as THREE from 'three';
 import { buildSiki } from './siki-model.js';
 
@@ -58,7 +58,10 @@ export function buildMotorbike(withRider = true) {
     tire: std(0x161616, .9),
     black: std(0x1e1e1e, .5),
     engine: std(0x5a5d62, .5, { metalness: .6 }),
+    engineDark: std(0x3a3d42, .55, { metalness: .5 }),
+    engineFin: std(0xa8aeb6, .35, { metalness: .7 }),
     glass: std(0xfff6d0, .1, { emissive: 0xfff2b0, emissiveIntensity: .6 }),
+    mirrorGlass: std(0xa8c4d8, .15, { metalness: .4, emissive: 0x406080, emissiveIntensity: .15 }),
     seat: std(0x111111, .72),
     seatSoft: std(0x1a1a1a, .78),
     rubber: std(0x222222, .85),
@@ -69,26 +72,62 @@ export function buildMotorbike(withRider = true) {
     k.position.copy(A).add(B).multiplyScalar(.5); k.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); return k; };
   const root = new THREE.Group(), lean = new THREE.Group(); root.add(lean); const bob = new THREE.Group(); lean.add(bob);
   const R = .36;
-  const wheel = () => { const w = new THREE.Group(), spin = new THREE.Group(); w.add(spin);
-    spin.add(mesh(new THREE.TorusGeometry(R - .04, .07, 10, 28), m.tire, [0, 0, 0], null, [0, Math.PI / 2, 0]));
-    spin.add(mesh(new THREE.TorusGeometry(R - .11, .018, 6, 24), m.chrome, [0, 0, 0], null, [0, Math.PI / 2, 0]));
-    spin.add(mesh(new THREE.CylinderGeometry(.06, .06, .14, 12), m.chrome, [0, 0, 0], null, [0, 0, Math.PI / 2]));
-    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; spin.add(cyl(.006, 0, m.chrome, [(i % 2 ? .04 : -.04), 0, 0], [0, Math.sin(a) * (R - .11), Math.cos(a) * (R - .11)])); }
-    spin.add(mesh(new THREE.CylinderGeometry(.12, .12, .02, 16), m.silverSoft, [.06, 0, 0], null, [0, 0, Math.PI / 2])); // kotouč
-    w.spin = spin; return w; };
+  // spoked wheel v2 — denser spokes, rim lip, hub; spin group for game3d
+  const wheel = () => {
+    const w = new THREE.Group(), spin = new THREE.Group(); w.add(spin);
+    const rimR = R - .11;
+    // tire
+    spin.add(mesh(new THREE.TorusGeometry(R - .04, .075, 10, 32), m.tire, [0, 0, 0], null, [0, Math.PI / 2, 0]));
+    // tread hint (thin outer ring)
+    spin.add(mesh(new THREE.TorusGeometry(R - .01, .012, 6, 28), m.black, [0, 0, 0], null, [0, Math.PI / 2, 0]));
+    // chrome rim + inner lip
+    spin.add(mesh(new THREE.TorusGeometry(rimR, .02, 6, 28), m.chrome, [0, 0, 0], null, [0, Math.PI / 2, 0]));
+    spin.add(mesh(new THREE.TorusGeometry(rimR - .04, .01, 5, 24), m.silverSoft, [0, 0, 0], null, [0, Math.PI / 2, 0]));
+    // hub
+    spin.add(mesh(new THREE.CylinderGeometry(.07, .07, .12, 14), m.chrome, [0, 0, 0], null, [0, 0, Math.PI / 2]));
+    spin.add(mesh(new THREE.CylinderGeometry(.035, .035, .14, 10), m.black, [0, 0, 0], null, [0, 0, Math.PI / 2]));
+    // 18 crossed spokes (both flanges) — readable scrambler look
+    for (let i = 0; i < 18; i++) {
+      const a = i / 18 * Math.PI * 2;
+      const y = Math.sin(a) * rimR, z = Math.cos(a) * rimR;
+      spin.add(cyl(.005, 0, m.chrome, [.05, 0, 0], [0, y, z]));
+      spin.add(cyl(.005, 0, m.chrome, [-.05, 0, 0], [0, y, z]));
+    }
+    // brake disc (right side)
+    spin.add(mesh(new THREE.CylinderGeometry(.14, .14, .012, 20), m.silverSoft, [.07, 0, 0], null, [0, 0, Math.PI / 2]));
+    spin.add(mesh(new THREE.CylinderGeometry(.05, .05, .014, 12), m.chrome, [.075, 0, 0], null, [0, 0, Math.PI / 2]));
+    w.spin = spin; return w;
+  };
   const rear = wheel(); rear.position.set(0, R, -.72); bob.add(rear);
   const steer = new THREE.Group(); steer.position.set(0, .95, .52); steer.rotation.x = .38; bob.add(steer);
   const front = wheel(); front.position.set(0, -.62, .25); // v souřadnicích řízení
   const fg = new THREE.Group(); fg.rotation.x = -.38; steer.add(fg); // vyrovnat kolo
   front.position.set(0, R - .95, .52 - .52 + .28); fg.add(front);
-  [-1, 1].forEach(s => { steer.add(cyl(.025, 0, m.chrome, [s * .1, .1, 0], [s * .1, -.7, 0])); });
-  // round headlight (café)
-  steer.add(mesh(new THREE.CylinderGeometry(.12, .11, .12, 18), m.chrome, [0, .02, .14], null, [Math.PI / 2, 0, 0]));
-  steer.add(mesh(new THREE.CylinderGeometry(.095, .095, .02, 18), m.glass, [0, .02, .205], null, [Math.PI / 2, 0, 0]));
-  steer.add(mesh(new THREE.TorusGeometry(.11, .012, 6, 18), m.chrome, [0, .02, .14], null, [0, 0, 0]));
-  steer.add(cyl(.018, 0, m.chrome, [-.36, .22, -.08], [.36, .22, -.08]));                                                     // řídítka
-  [-1, 1].forEach(s => { steer.add(mesh(new THREE.CylinderGeometry(.03, .03, .12, 8), m.black, [s * .34, .22, -.08], null, [0, 0, Math.PI / 2]));
-    steer.add(cyl(.008, 0, m.chrome, [s * .26, .22, -.08], [s * .32, .42, -.06])); steer.add(mesh(new THREE.CylinderGeometry(.05, .05, .015, 12), m.chrome, [s * .33, .45, -.06], null, [Math.PI / 2, 0, 0])); });
+  // front forks
+  [-1, 1].forEach(s => {
+    steer.add(cyl(.028, 0, m.chrome, [s * .1, .12, 0], [s * .1, -.72, 0]));
+    steer.add(cyl(.032, 0, m.black, [s * .1, -.35, 0], [s * .1, -.72, 0])); // lower slider
+  });
+  // round headlight v2 (large café / scrambler)
+  const hl = new THREE.Group(); hl.position.set(0, .02, .14); steer.add(hl);
+  hl.add(mesh(new THREE.CylinderGeometry(.13, .12, .14, 20), m.chrome, [0, 0, 0], null, [Math.PI / 2, 0, 0]));
+  hl.add(mesh(new THREE.TorusGeometry(.125, .014, 6, 20), m.chrome, [0, 0, .02]));
+  hl.add(mesh(new THREE.CylinderGeometry(.105, .105, .025, 20), m.glass, [0, 0, .08], null, [Math.PI / 2, 0, 0]));
+  hl.add(mesh(new THREE.CylinderGeometry(.04, .04, .01, 12), m.chrome, [0, 0, .095], null, [Math.PI / 2, 0, 0])); // bulb hint
+  // handlebars
+  steer.add(cyl(.018, 0, m.chrome, [-.38, .22, -.08], [.38, .22, -.08]));
+  [-1, 1].forEach(s => {
+    // grips
+    steer.add(mesh(new THREE.CylinderGeometry(.032, .03, .13, 8), m.rubber, [s * .36, .22, -.08], null, [0, 0, Math.PI / 2]));
+    // round bar-end mirrors (stem + disc)
+    const mir = new THREE.Group();
+    mir.position.set(s * .34, .42, -.04);
+    mir.rotation.z = s * -.15;
+    steer.add(mir);
+    mir.add(cyl(.007, 0, m.chrome, [0, -.18, -.02], [0, 0, 0]));
+    mir.add(mesh(new THREE.CylinderGeometry(.055, .055, .018, 16), m.chrome, [0, .02, 0], null, [Math.PI / 2, s * .35, 0]));
+    mir.add(mesh(new THREE.CylinderGeometry(.045, .045, .01, 16), m.mirrorGlass, [0, .02, s * .012], null, [Math.PI / 2, s * .35, 0]));
+  });
   // front fender (short café)
   bob.add(mesh(new THREE.BoxGeometry(.14, .025, .42), m.silverSoft, [0, .78, .48], null, [-.28, 0, 0]));
   bob.add(mesh(new THREE.BoxGeometry(.12, .02, .18), m.silver, [0, .7, .68], null, [-.55, 0, 0]));
@@ -148,14 +187,55 @@ export function buildMotorbike(withRider = true) {
   bob.add(mesh(new THREE.BoxGeometry(.26, .035, .36), m.silverSoft, [0, .9, -.86], null, [-.2, 0, 0]));
   bob.add(mesh(new THREE.BoxGeometry(.22, .025, .16), m.silver, [0, .78, -1.02], null, [-.55, 0, 0]));
 
-  // motor + výfuk (unchanged silhouette, slight chrome refresh)
+  // —— engine v2: block + readable cooling fins + cases ——
   const eng = new THREE.Group(); eng.position.set(0, .55, .02); eng.scale.setScalar(1.3); bob.add(eng);
-  eng.add(mesh(new THREE.BoxGeometry(.28, .26, .4), m.engine));
-  for (let i = 0; i < 5; i++) eng.add(mesh(new THREE.BoxGeometry(.32, .015, .2), m.silverSoft, [0, .18 + i * .035, .08], null, [.35, 0, 0]));
-  eng.add(mesh(new THREE.CylinderGeometry(.12, .12, .32, 16), m.silver, [0, -.08, -.08], null, [0, 0, Math.PI / 2]));
-  bob.add(cyl(.04, 0, m.chrome, [.17, .5, .2], [.2, .32, -.2])); bob.add(cyl(.045, 0, m.chrome, [.2, .32, -.2], [.22, .42, -.95]));
-  bob.add(cyl(.02, 0, m.chrome, [-.12, .5, -.55], [-.12, .95, -.5])); bob.add(cyl(.02, 0, m.chrome, [.12, .5, -.55], [.12, .95, -.5])); // tlumiče
-  const res = { root, lean, bob, steer, front, rear, R, tank, seat };
+  eng.add(mesh(new THREE.BoxGeometry(.26, .24, .38), m.engine));
+  eng.add(mesh(new THREE.BoxGeometry(.22, .12, .2), m.engineDark, [0, .1, .05]));
+  // cooling fins (both flanks + top) — denser / thicker for silhouette
+  for (let i = 0; i < 8; i++) {
+    const y = -.02 + i * .035;
+    eng.add(mesh(new THREE.BoxGeometry(.34, .012, .18), m.engineFin, [0, y, .1], null, [.2, 0, 0]));
+  }
+  for (let i = 0; i < 5; i++) {
+    eng.add(mesh(new THREE.BoxGeometry(.3, .01, .12), m.silverSoft, [0, .14 + i * .028, -.05]));
+  }
+  // crankcase / primary cover
+  eng.add(mesh(new THREE.CylinderGeometry(.13, .13, .28, 18), m.silver, [0, -.1, -.06], null, [0, 0, Math.PI / 2]));
+  eng.add(mesh(new THREE.CylinderGeometry(.08, .08, .3, 14), m.chrome, [0, -.1, -.06], null, [0, 0, Math.PI / 2]));
+  // carb / intake stub
+  eng.add(mesh(new THREE.CylinderGeometry(.04, .05, .08, 10), m.black, [0, .08, .22], null, [Math.PI / 2, 0, 0]));
+
+  // —— chrome exhaust v2: header + muffler can (right side) ——
+  bob.add(cyl(.035, 0, m.chrome, [.16, .52, .18], [.2, .38, -.05]));
+  bob.add(cyl(.038, 0, m.chrome, [.2, .38, -.05], [.22, .36, -.45]));
+  // muffler body
+  bob.add(mesh(new THREE.CylinderGeometry(.055, .05, .42, 12), m.chrome, [.22, .4, -.72], null, [Math.PI / 2 + .08, 0, 0]));
+  bob.add(mesh(new THREE.CylinderGeometry(.048, .042, .06, 12), m.chrome, [.22, .38, -.95], null, [Math.PI / 2 + .08, 0, 0]));
+  bob.add(mesh(new THREE.TorusGeometry(.05, .01, 6, 12), m.chrome, [.22, .42, -.55], null, [Math.PI / 2, 0, 0]));
+  // heat shield plate
+  bob.add(mesh(new THREE.BoxGeometry(.04, .06, .22), m.silverSoft, [.18, .44, -.25], null, [.15, 0, 0]));
+  // left stub pipe hint (balance silhouette)
+  bob.add(cyl(.028, 0, m.chrome, [-.15, .5, .1], [-.18, .4, -.25]));
+
+  // —— dual rear shocks v2: spring + damper ——
+  [-1, 1].forEach(s => {
+    // damper body
+    bob.add(cyl(.018, 0, m.chrome, [s * .12, .48, -.55], [s * .12, .98, -.48]));
+    // coil spring (stacked rings along shock)
+    for (let i = 0; i < 7; i++) {
+      const t = (i + .5) / 7;
+      const y = .48 + t * (.98 - .48);
+      const z = -.55 + t * (-.48 - -.55);
+      bob.add(mesh(new THREE.TorusGeometry(.032, .007, 5, 10), m.chrome, [s * .12, y, z], null, [0.55, 0, 0]));
+    }
+    // top / bottom mounts
+    bob.add(mesh(new THREE.SphereGeometry(.025, 8, 6), m.black, [s * .12, .98, -.48]));
+    bob.add(mesh(new THREE.SphereGeometry(.025, 8, 6), m.black, [s * .12, .48, -.55]));
+  });
+  // swingarm hint
+  bob.add(cyl(.016, 0, m.black, [-.1, .42, -.2], [-.1, .38, -.7]));
+  bob.add(cyl(.016, 0, m.black, [.1, .42, -.2], [.1, .38, -.7]));
+  const res = { root, lean, bob, steer, front, rear, R, tank, seat, eng };
   if (withRider) {
     const K = buildSiki(); const r = K.root; r.scale.setScalar(.56); r.position.set(0, .5, -.26); bob.add(r);
     K.body.rotation.x = .15;
