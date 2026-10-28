@@ -20,9 +20,12 @@
 @media (pointer:fine){#fs{opacity:.85}}
 #toast{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);color:#ffd24a;font:bold 30px sans-serif;text-shadow:0 2px 4px #000;opacity:0;transition:opacity .3s,transform .6s;pointer-events:none}#toast.on{opacity:1;transform:translate(-50%,-90%)}
 #rotate{display:none;position:fixed;inset:0;background:#1b2a3a;color:#fff;font-size:20px;align-items:center;justify-content:center;z-index:9}
-@media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}</style></head>
+@media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}#gfx{display:inline-flex;margin-left:8px;vertical-align:middle;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.45);background:rgba(0,0,0,.35)}
+#gfx button{appearance:none;border:0;margin:0;padding:3px 8px;font:bold 11px sans-serif;color:rgba(255,255,255,.75);background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#gfx button[aria-checked="true"]{background:#ffd24a;color:#1b2a3a}
+</style></head>
 <body><div id="rotate">Otoč telefon na šířku 🐺📱</div>
-<div id="wrap"><div id="stage"><div id="hud"><span id="bones">🦴 0</span> &nbsp; <span id="lives">❤ 3</span> <span id="timer"></span> &nbsp;·&nbsp; <a href="../">menu</a></div><div id="toast"></div><div id="bubble"></div><div id="compass">➤</div>
+<div id="wrap"><div id="stage"><div id="hud"><span id="bones">🦴 0</span> &nbsp; <span id="lives">❤ 3</span> <span id="timer"></span> &nbsp;·&nbsp; <a href="../">menu</a> <span id="gfx" role="radiogroup" aria-label="Nastavení grafiky"><button type="button" role="radio" data-gfx="quality" aria-checked="true" title="Vyšší kvalita">Grafika</button><button type="button" role="radio" data-gfx="perf" aria-checked="false" title="Lepší výkon">Výkon</button></span></div><div id="toast"></div><div id="bubble"></div><div id="compass">➤</div>
 <button type="button" id="fs" aria-label="Celá obrazovka" aria-pressed="false" title="Celá obrazovka"><span class="box" aria-hidden="true"></span></button>
 <div id="joy"><div id="knob"></div></div><div id="run">Běh</div><div id="jump">Skok</div><div id="over"><h2 id="ovT"></h2><p id="ovS"></p><div><button onclick="location.reload()">↻ Hrát znovu</button> <button id="l2btn" style="display:none;background:#c0282d" onclick="location.href='?level=2'">Level 2 ▶</button></div></div></div></div>
 <script type="importmap">{"imports":{"three":"../assets/vendor/three.module.min.js"}}</script>

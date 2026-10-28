@@ -8,18 +8,42 @@ import { buildMotorbike } from './motorbike-model.js';
 const LEVEL = new URLSearchParams(location.search).get('level') === '2' ? 2 : 1;
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
-const renderer = new THREE.WebGLRenderer({ antialias: !mobile, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.5 : 2));
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const GFX_KEY = 'guru-run-gfx';
+const readGfx = () => { try { return localStorage.getItem(GFX_KEY) === 'perf' ? 'perf' : 'quality'; } catch { return 'quality'; } };
+const gfxDprCap = m => m === 'perf' ? (mobile ? 0.75 : 1) : (mobile ? 1.5 : 2);
+let gfxMode = readGfx();
+const renderer = new THREE.WebGLRenderer({ antialias: gfxMode === 'quality' && !mobile, powerPreference: 'high-performance' });
+renderer.shadowMap.enabled = true;
 stage.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9cc9e8); scene.fog = new THREE.Fog(0x9cc9e8, 35, 150);
 const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 160);
 scene.add(new THREE.HemisphereLight(0xdfefff, 0x6b5a48, 1.2));
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
-sun.position.set(12, 25, 8); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+sun.position.set(12, 25, 8); sun.castShadow = true;
 Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 80 });
 scene.add(sun, sun.target);
+
+function syncGfxUi() {
+  document.querySelectorAll('[data-gfx][role=radio]').forEach(btn => {
+    btn.setAttribute('aria-checked', btn.getAttribute('data-gfx') === gfxMode ? 'true' : 'false');
+  });
+}
+function applyGfx(mode, { persist = true } = {}) {
+  gfxMode = mode === 'perf' ? 'perf' : 'quality';
+  if (persist) try { localStorage.setItem(GFX_KEY, gfxMode); } catch {}
+  renderer.setPixelRatio(Math.min(devicePixelRatio, gfxDprCap(gfxMode)));
+  if (gfxMode === 'perf') {
+    renderer.shadowMap.type = THREE.BasicShadowMap;
+    sun.shadow.mapSize.set(512, 512);
+  } else {
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    sun.shadow.mapSize.set(1024, 1024);
+  }
+  if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  syncGfxUi();
+  resize();
+}
 
 const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 });
 // --- ulice ---
@@ -203,7 +227,11 @@ const GRAV = 26, JUMP_V = 9.5;
 const holeAt = z => HOLES.some(h => z < h.z0 && z > h.z1);
 const camPos = new THREE.Vector3(0, 4, 8), tmp = new THREE.Vector3();
 function resize() { const v = window.visualViewport; if (v) { wrap.style.width = v.width + 'px'; wrap.style.height = v.height + 'px'; } const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-addEventListener('resize', resize); visualViewport && visualViewport.addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 300)); resize();
+addEventListener('resize', resize); visualViewport && visualViewport.addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 300));
+applyGfx(gfxMode, { persist: false });
+document.querySelectorAll('#gfx [data-gfx]').forEach(btn => {
+  btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); applyGfx(btn.getAttribute('data-gfx')); });
+});
 
 // Mobile-friendly square fullscreen toggle (Fullscreen API + webkit)
 const fsBtn = document.getElementById('fs');
