@@ -7,6 +7,11 @@
 #stage{position:relative;width:100%;height:100%;overflow:hidden}canvas{display:block;width:100%;height:100%}
 #joy{position:absolute;left:24px;bottom:20px;width:130px;height:130px;border-radius:50%;background:rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.5)}
 #knob{position:absolute;left:40px;top:40px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.6)}
+#pad{display:none;position:absolute;left:16px;bottom:12px;width:148px;height:148px;touch-action:none}
+#pad button{appearance:none;position:absolute;width:48px;height:48px;margin:0;padding:0;border-radius:12px;border:3px solid rgba(255,255,255,.6);background:rgba(0,0,0,.3);color:#fff;font:bold 22px/1 sans-serif;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;cursor:pointer;touch-action:none}
+#pad button.on{background:rgba(255,255,255,.4)}
+#pad [data-dir=up]{left:50px;top:0}#pad [data-dir=down]{left:50px;bottom:0}#pad [data-dir=left]{left:0;top:50px}#pad [data-dir=right]{right:0;top:50px}
+body.ctrl-arrows #joy{display:none}body.ctrl-arrows #pad{display:block}body.ctrl-joy #pad{display:none}body.ctrl-joy #joy{display:block}
 #jump{position:absolute;right:22px;bottom:16px;width:104px;height:104px;border-radius:50%;background:rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.6);color:#fff;font-weight:bold;font-size:22px;display:flex;align-items:center;justify-content:center}#jump.on{background:rgba(255,255,255,.4)}
 #over{display:none;position:absolute;inset:0;background:rgba(0,0,0,.72);color:#fff;flex-direction:column;align-items:center;justify-content:center;text-align:center}#over.on{display:flex}#over h2{color:#ffd24a;font-size:34px;margin:0 0 8px}#over p{font-size:20px}#over button{font:bold 22px sans-serif;padding:12px 26px;border-radius:12px;border:0;background:#4f7a3a;color:#fff}
 #run{position:absolute;right:140px;bottom:40px;width:78px;height:78px;border-radius:50%;background:rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.5);color:#fff;font-weight:bold;font-size:17px;display:flex;align-items:center;justify-content:center}
@@ -20,13 +25,15 @@
 @media (pointer:fine){#fs{opacity:.85}}
 #toast{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);color:#ffd24a;font:bold 30px sans-serif;text-shadow:0 2px 4px #000;opacity:0;transition:opacity .3s,transform .6s;pointer-events:none}#toast.on{opacity:1;transform:translate(-50%,-90%)}
 #rotate{display:none;position:fixed;inset:0;background:#1b2a3a;color:#fff;font-size:20px;align-items:center;justify-content:center;z-index:9}
-@media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}#gfx{display:inline-flex;margin-left:8px;vertical-align:middle;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.45);background:rgba(0,0,0,.35)}
-#gfx button{appearance:none;border:0;margin:0;padding:3px 8px;font:bold 11px sans-serif;color:rgba(255,255,255,.75);background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent}
-#gfx button[aria-checked="true"]{background:#ffd24a;color:#1b2a3a}
+@media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}#gfx,#ctrl{display:inline-flex;margin-left:8px;vertical-align:middle;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.45);background:rgba(0,0,0,.35)}
+#gfx button,#ctrl button{appearance:none;border:0;margin:0;padding:3px 8px;font:bold 11px sans-serif;color:rgba(255,255,255,.75);background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#gfx button[aria-checked="true"],#ctrl button[aria-checked="true"]{background:#ffd24a;color:#1b2a3a}
 </style></head>
-<body><div id="rotate">Otoč telefon na šířku 🐺📱</div>
-<div id="wrap"><div id="stage"><div id="hud"><span id="bones">🦴 0</span> &nbsp; <span id="lives">❤ 3</span> <span id="timer"></span> &nbsp;·&nbsp; <a href="../">menu</a> <span id="gfx" role="radiogroup" aria-label="Nastavení grafiky"><button type="button" role="radio" data-gfx="quality" aria-checked="true" title="Vyšší kvalita">Grafika</button><button type="button" role="radio" data-gfx="perf" aria-checked="false" title="Lepší výkon">Výkon</button></span></div><div id="toast"></div><div id="bubble"></div><div id="compass">➤</div>
+<body class="ctrl-joy"><div id="rotate">Otoč telefon na šířku 🐺📱</div>
+<div id="wrap"><div id="stage"><div id="hud"><span id="bones">🦴 0</span> &nbsp; <span id="lives">❤ 3</span> <span id="timer"></span> &nbsp;·&nbsp; <a href="../">menu</a> <span id="gfx" role="radiogroup" aria-label="Nastavení grafiky"><button type="button" role="radio" data-gfx="quality" aria-checked="true" title="Vyšší kvalita">Grafika</button><button type="button" role="radio" data-gfx="perf" aria-checked="false" title="Lepší výkon">Výkon</button></span> <span id="ctrl" role="radiogroup" aria-label="Nastavení ovládání"><button type="button" role="radio" data-ctrl="joy" aria-checked="true" title="Virtuální joystick">Joystick</button><button type="button" role="radio" data-ctrl="arrows" aria-checked="false" title="Šipky na obrazovce">Šipky</button></span></div><div id="toast"></div><div id="bubble"></div><div id="compass">➤</div>
 <button type="button" id="fs" aria-label="Celá obrazovka" aria-pressed="false" title="Celá obrazovka"><span class="box" aria-hidden="true"></span></button>
-<div id="joy"><div id="knob"></div></div><div id="run">Běh</div><div id="jump">Skok</div><div id="over"><h2 id="ovT"></h2><p id="ovS"></p><div><button onclick="location.reload()">↻ Hrát znovu</button> <button id="l2btn" style="display:none;background:#c0282d" onclick="location.href='?level=2'">Level 2 ▶</button></div></div></div></div>
+<div id="joy"><div id="knob"></div></div>
+<div id="pad" aria-label="Šipky"><button type="button" data-dir="up" aria-label="Nahoru">↑</button><button type="button" data-dir="left" aria-label="Doleva">←</button><button type="button" data-dir="right" aria-label="Doprava">→</button><button type="button" data-dir="down" aria-label="Dolů">↓</button></div>
+<div id="run">Běh</div><div id="jump">Skok</div><div id="over"><h2 id="ovT"></h2><p id="ovS"></p><div><button onclick="location.reload()">↻ Hrát znovu</button> <button id="l2btn" style="display:none;background:#c0282d" onclick="location.href='?level=2'">Level 2 ▶</button></div></div></div></div>
 <script type="importmap">{"imports":{"three":"../assets/vendor/three.module.min.js"}}</script>
 <script type="module" src="../js/game3d.js"></script></body></html>
