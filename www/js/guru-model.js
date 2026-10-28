@@ -1,4 +1,4 @@
-// Procedurální model Guru (husky) — PR2 nose: wet highlight + short whiskers
+// Procedurální model Guru (husky) — PR3 mouth: cavity, teeth, clearer open smile
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
@@ -214,9 +214,13 @@ export function buildGuru() {
     pupil: std(0x020302, .12),
     hl: new THREE.MeshBasicMaterial({ color: 0xffffff }),
     hlSoft: new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: .55 }),
-    mouth: std(0x2a1816, .85),
+    mouth: std(0x1a0e0c, .9),
+    mouthDeep: std(0x0c0606, .95),
+    lip: std(0x3a201c, .75),
     tongue: std(0xe84a5f, .5, { emissive: 0x4a1018, emissiveIntensity: .14 }),
     gum: std(0xc47878, .7),
+    gumDark: std(0xa05858, .78),
+    tooth: std(0xf5f0e6, .35, { metalness: .05 }),
     stitch: std(0x8b5a2b, .75),
     brow: std(0x12100e, .88),
   };
@@ -412,12 +416,36 @@ export function buildGuru() {
       head.add(w);
     });
   });
-  // úšklebek + jazyk
+  // tlama v2 — deeper cavity, lips, gums, readable teeth + floppy tongue
   const jaw = new THREE.Group();
   jaw.position.set(0, -.22, .48);
   head.add(jaw);
-  jaw.add(mesh(SH(.145, 24, 16), mat.mouth, [0, -.02, .02], [1.4, .55, .95]));
-  jaw.add(mesh(new THREE.SphereGeometry(.115, 18, 12, 0, Math.PI * 2, 0, Math.PI * .55), mat.gum, [0, .025, .05], [1.25, .72, 1.05]));
+  head.jaw = jaw;
+  // dark open-mouth cavity (reads as depth behind tongue)
+  jaw.add(mesh(SH(.15, 22, 14), mat.mouth, [0, -.02, .02], [1.45, .6, 1.05]));
+  jaw.add(mesh(SH(.1, 16, 12), mat.mouthDeep, [0, -.01, -.02], [1.2, .45, .85]));
+  // upper / lower lip rims (clearer smile silhouette)
+  jaw.add(mesh(new THREE.TorusGeometry(.14, .018, 6, 16, Math.PI), mat.lip, [0, .04, .08], [1.15, .55, 1], [Math.PI / 2, 0, 0]));
+  jaw.add(mesh(new THREE.TorusGeometry(.13, .016, 6, 14, Math.PI), mat.lip, [0, -.06, .07], [1.2, .5, 1], [-Math.PI / 2, 0, 0]));
+  // gum ridges
+  jaw.add(mesh(new THREE.SphereGeometry(.12, 16, 10, 0, Math.PI * 2, 0, Math.PI * .55), mat.gum, [0, .03, .06], [1.28, .7, 1.05]));
+  jaw.add(mesh(new THREE.SphereGeometry(.1, 14, 8, 0, Math.PI * 2, 0, Math.PI * .5), mat.gumDark, [0, -.05, .05], [1.3, .55, 1], [Math.PI, 0, 0]));
+  // upper teeth row (incisors + canines) — low poly, visible in open smile
+  const addTooth = (x, y, z, sx, sy, sz) => {
+    jaw.add(mesh(new THREE.BoxGeometry(.028, .035, .022), mat.tooth, [x, y, z], [sx, sy, sz]));
+  };
+  // upper front
+  addTooth(-.035, .015, .12, 1, .9, 1);
+  addTooth(.035, .015, .12, 1, .9, 1);
+  addTooth(-.01, .018, .125, .85, 1, 1);
+  addTooth(.01, .018, .125, .85, 1, 1);
+  // upper canines (slightly longer)
+  addTooth(-.07, .005, .11, .75, 1.35, .9);
+  addTooth(.07, .005, .11, .75, 1.35, .9);
+  // lower hint (smaller, under tongue root)
+  addTooth(-.04, -.055, .1, .8, .7, .85);
+  addTooth(.04, -.055, .1, .8, .7, .85);
+  addTooth(0, -.058, .105, .7, .65, .8);
   // Crash flat lolling tongue v2 — wide Extrude, thin depth, tip child for flop
   // Shape in XY (width×length); rotateX(π/2) → flat face in XZ (reads flat from camera)
   const tongue = new THREE.Group();
@@ -626,6 +654,11 @@ export function animateGuru(g, t, speed, running) {
       tong.tip.rotation.z = Math.sin(n / 160) * .18;
       tong.tip.rotation.y = Math.sin(n / 250) * .08;
     }
+  }
+  // subtle jaw open bob (keeps smile readable; tongue stays child of jaw)
+  if (g.head.jaw) {
+    const jOpen = .02 + idle * (0.012 + Math.sin(t.now / 720) * .01);
+    g.head.jaw.rotation.x = lerp(g.head.jaw.rotation.x, jOpen, 6);
   }
   // ocas — plynulejší
   const tailSp = a > 1 ? 100 : 180;
