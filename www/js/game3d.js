@@ -74,11 +74,26 @@ const arch = new THREE.Mesh(new THREE.BoxGeometry(7, 9, 8.2), M(0x111111)); arch
 [[-7, 1], [7, 1]].forEach(([x]) => { const sp = new THREE.Mesh(new THREE.ConeGeometry(1, 6, 4), M(0x2b2b2b)); sp.position.set(x, 25, 3); gate.add(sp); });
 gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 
+// Per-character rim/fill (no EffectComposer) — follows each root
+function attachCharLights(root, { fillI = .42, rimI = .55 } = {}) {
+  const fill = new THREE.PointLight(0xffe6cc, fillI, 7, 2);
+  fill.position.set(.55, 1.65, 1.35);
+  fill.castShadow = false;
+  root.add(fill);
+  const rim = new THREE.PointLight(0xa8c4ff, rimI, 6, 2);
+  rim.position.set(-1.05, 1.95, -1.25);
+  rim.castShadow = false;
+  root.add(rim);
+  return { fill, rim };
+}
+
 // --- Guru (model v guru-model.js) ---
 const G = buildGuru(); let guru = G.root; guru.scale.setScalar(1); scene.add(guru);
+G.charLights = attachCharLights(guru, { fillI: .45, rimI: .58 });
 
 // --- Fiškule (parťačka) ---
 const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visible = false; scene.add(fis);
+F.charLights = attachCharLights(fis, { fillI: .4, rimI: .52 });
 let fState = LEVEL === 2 ? 'npc' : 'idle', fVy = 0, fT = 0, fSpeed = 0;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
@@ -183,7 +198,7 @@ function endScreen(title, win) { done = true; document.getElementById('ovT').tex
 let raceT = 0; const fmtT = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor(t * 10 % 10)}`;
 
 // --- smyčka ---
-let heading = 0, speed = 0, phase = 0, last = performance.now(), vy = 0, grounded = true, coyote = 0, buffer = 0, jumpHeld = false, falling = false, done = false, checkpoint = 0, squash = 0;
+let heading = 0, speed = 0, phase = 0, last = performance.now(), vy = 0, grounded = true, coyote = 0, buffer = 0, jumpHeld = false, falling = false, done = false, checkpoint = 0, squash = 0, idleTurn = 0;
 const GRAV = 26, JUMP_V = 9.5;
 const holeAt = z => HOLES.some(h => z < h.z0 && z > h.z1);
 const camPos = new THREE.Vector3(0, 4, 8), tmp = new THREE.Vector3();
@@ -299,7 +314,14 @@ function tick(now) {
   heading += turn * 2.4 * dt;
   const target = fwd * (fwd > 0 ? (running ? 9 : 4) : 2.5);
   speed += (target - speed) * Math.min(1, dt * 8);
-  guru.rotation.y = heading + Math.PI;
+  const lookCam = grounded && !falling && Math.abs(speed) < .35 && Math.abs(fwd) < .15;
+  idleTurn += ((lookCam ? 1 : 0) - idleTurn) * Math.min(1, dt * (lookCam ? 2.4 : 4.5));
+  const travelYaw = heading + Math.PI;
+  const camYaw = heading; // kamera je za zády ve směru heading
+  let dYaw = (camYaw - travelYaw) % (Math.PI * 2);
+  if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+  if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+  guru.rotation.y = travelYaw + dYaw * idleTurn;
   guru.position.x += -Math.sin(heading) * speed * dt; guru.position.z += -Math.cos(heading) * speed * dt;
   guru.position.x = THREE.MathUtils.clamp(guru.position.x, -HALF_W - 3.2, HALF_W + 3.2);
   guru.position.z = THREE.MathUtils.clamp(guru.position.z, -LEN + 2, 8);
@@ -316,7 +338,7 @@ function tick(now) {
   if (falling) { guru.position.z = THREE.MathUtils.clamp(guru.position.z, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z1 + .4 ?? -1e9, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z0 - .4 ?? 1e9); }
   if (guru.position.y < -6 && !done) {
     lives--; elL.textContent = '❤ ' + Math.max(0, lives); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([80, 40, 120]);
-    if (lives <= 0) endScreen('Konec hry'); else { showToast('-1 život'); guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; camPos.set(0, 4, checkpoint + 8); }
+    if (lives <= 0) endScreen('Konec hry'); else { showToast('-1 život'); guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; idleTurn = 0; camPos.set(0, 4, checkpoint + 8); }
   }
   for (const c of CHECKS) if (guru.position.z < c - 1 && c < checkpoint && grounded) { checkpoint = c; showToast('Checkpoint ✔'); }
   flags.forEach((f, i) => f.rotation.y = Math.sin(now / 300 + i) * .3);
@@ -326,8 +348,14 @@ function tick(now) {
   updateSiki(dt, now);
   if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
-  animateGuru(G, { dt, now }, grounded ? speed : 0, running);
-  if (!grounded) { const up = vy > 0; G.arms.forEach((a, i) => a.rotation.x = up ? -2.6 : -1.6); G.legs[0].rotation.x = up ? -.9 : -.3; G.legs[1].rotation.x = up ? .5 : .2; G.body.rotation.x = up ? -.1 : .15; }
+  animateGuru(G, { dt, now, lookCam }, grounded ? speed : 0, running);
+  if (!grounded) {
+    const up = vy > 0, L = (c, tgt) => c + (tgt - c) * Math.min(1, dt * 7);
+    G.arms.forEach(a => { a.rotation.x = L(a.rotation.x, up ? -2.35 : -1.45); });
+    G.legs[0].rotation.x = L(G.legs[0].rotation.x, up ? -.85 : -.28);
+    G.legs[1].rotation.x = L(G.legs[1].rotation.x, up ? .45 : .18);
+    G.body.rotation.x = L(G.body.rotation.x, up ? -.08 : .12);
+  }
   squash *= Math.pow(.0005, dt); const q = squash > 0 ? squash * .25 : squash * .18;
   guru.scale.set(1 + q, 1 - q * 1.4, 1 + q);
   // kamera za Guruem
