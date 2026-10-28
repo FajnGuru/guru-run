@@ -1,43 +1,141 @@
-// Procedurální model Guru (husky) — first-pass look upgrade (méně plastu, čitelnější oči/brýle)
+// Procedurální model Guru (husky) — head refine: canvas fur/muzzle/iris + jemnější geo hlavy
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
 import * as THREE from 'three';
 
-/** Jedna malá noise mapa sdílená všemi fur materiály — levný „srst“ feel bez GLTF. */
-function makeFurNoiseMap() {
-  const s = 64, c = document.createElement('canvas');
-  c.width = c.height = s;
-  const ctx = c.getContext('2d'), img = ctx.createImageData(s, s);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const n = 180 + ((Math.random() * 75) | 0);
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = n;
-    img.data[i + 3] = 255;
+/** Canvas textury jen pro hlavu — srst, morda, iris (cached, mobile-friendly). */
+function makeFurNoiseMap(size = 128) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#b8b8b8';
+  ctx.fillRect(0, 0, size, size);
+  // směrové „chlupy“ + grain
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random() * size, y = Math.random() * size;
+    const len = 3 + Math.random() * 10;
+    const ang = -0.4 + Math.random() * 0.8;
+    const g = 140 + ((Math.random() * 90) | 0);
+    ctx.strokeStyle = `rgb(${g},${g},${g})`;
+    ctx.lineWidth = 0.6 + Math.random() * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+    ctx.stroke();
   }
-  ctx.putImageData(img, 0, 0);
+  for (let i = 0; i < 400; i++) {
+    const g = 100 + ((Math.random() * 120) | 0);
+    ctx.fillStyle = `rgb(${g},${g},${g})`;
+    ctx.fillRect((Math.random() * size) | 0, (Math.random() * size) | 0, 1, 1);
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2.5, 2.5);
+  tex.repeat.set(2.2, 2.2);
   tex.needsUpdate = true;
   return tex;
 }
 
-let _furNoise;
+function makeMuzzleMap() {
+  const s = 128, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(s * .5, s * .55, 8, s * .5, s * .5, s * .55);
+  g.addColorStop(0, '#ffffff');
+  g.addColorStop(.55, '#f4f1ea');
+  g.addColorStop(1, '#e0d8cc');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  for (let i = 0; i < 180; i++) {
+    const a = 200 + ((Math.random() * 40) | 0);
+    ctx.fillStyle = `rgb(${a},${a - 4},${a - 10})`;
+    ctx.fillRect((Math.random() * s) | 0, (Math.random() * s) | 0, 1 + (Math.random() * 2) | 0, 1);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1.2, 1.2);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeCrownMap() {
+  const s = 128, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#2a2c30';
+  ctx.fillRect(0, 0, s, s);
+  for (let i = 0; i < 700; i++) {
+    const x = Math.random() * s, y = Math.random() * s;
+    const len = 2 + Math.random() * 8;
+    const v = 30 + ((Math.random() * 50) | 0);
+    ctx.strokeStyle = `rgb(${v},${v + 2},${v + 4})`;
+    ctx.lineWidth = 0.7 + Math.random();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + len * .3, y + len);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1.8, 1.8);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeIrisMap() {
+  const s = 64, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  const cx = s / 2, cy = s / 2;
+  const rg = ctx.createRadialGradient(cx, cy, 2, cx, cy, s * .48);
+  rg.addColorStop(0, '#1a5a32');
+  rg.addColorStop(.35, '#2cae62');
+  rg.addColorStop(.7, '#1e8a4a');
+  rg.addColorStop(1, '#0d3a22');
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, 0, s, s);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * 28, cy + Math.sin(a) * 28);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+  ctx.fillStyle = '#07150c';
+  ctx.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+let _furNoise, _muzzleMap, _crownMap, _irisMap;
 function furNoise() { return _furNoise || (_furNoise = makeFurNoiseMap()); }
+function muzzleMap() { return _muzzleMap || (_muzzleMap = makeMuzzleMap()); }
+function crownMap() { return _crownMap || (_crownMap = makeCrownMap()); }
+function irisMap() { return _irisMap || (_irisMap = makeIrisMap()); }
 
 export function buildGuru() {
   const noise = furNoise();
+  const muzTex = muzzleMap();
+  const crownTex = crownMap();
+  const irisTex = irisMap();
   const std = (c, r = .8, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0, ...extra });
-  const furMat = (c, r = .98) => std(c, r, {
+  const furMat = (c, r = .98, bump = .04) => std(c, r, {
     roughnessMap: noise,
     bumpMap: noise,
-    bumpScale: .035,
+    bumpScale: bump,
   });
   const mat = {
-    fur: furMat(0xf2efe9),
-    furGrey: furMat(0xa8adb6, .97),
-    furDark: furMat(0x5e6168, .96),
-    pink: std(0xe9a7a0, .92),
+    fur: furMat(0xf2efe9, .98, .035),
+    furHead: furMat(0xf6f3ee, .99, .055),
+    furMuzzle: std(0xffffff, .97, { map: muzTex, roughnessMap: noise, bumpMap: noise, bumpScale: .045 }),
+    furGrey: furMat(0x9aa0a8, .97, .05),
+    furDark: furMat(0x3a3d44, .96, .06),
+    furCrown: std(0x2c2e34, .97, { map: crownTex, roughnessMap: crownTex, bumpMap: crownTex, bumpScale: .07 }),
+    pink: std(0xf0b8b0, .9),
     shirt: std(0xf7f7f5, .88),
     jeans: std(0x2a4a86, .92),
     jeansDark: std(0x1e3766, .93),
@@ -45,16 +143,17 @@ export function buildGuru() {
     leatherDark: std(0x4a2814, .68, { metalness: .06 }),
     metal: std(0xb5a078, .28, { metalness: .78 }),
     glass: std(0x1a1816, .12, { metalness: .55, emissive: 0x0a0806, emissiveIntensity: .15 }),
-    nose: std(0x1a1412, .42),
-    eyeW: std(0xffffff, .22),
-    iris: std(0x2cae62, .28, { emissive: 0x0a3a1a, emissiveIntensity: .22 }),
-    pupil: std(0x050505, .18),
+    nose: std(0x141010, .38),
+    eyeW: std(0xffffff, .18),
+    eyeRim: std(0x1a1816, .85),
+    iris: std(0xffffff, .25, { map: irisTex, emissive: 0x0a3a1a, emissiveIntensity: .18 }),
+    pupil: std(0x050505, .15),
     hl: new THREE.MeshBasicMaterial({ color: 0xffffff }),
     mouth: std(0x2a1816, .85),
-    tongue: std(0xe84a5f, .55, { emissive: 0x4a1018, emissiveIntensity: .12 }),
+    tongue: std(0xe84a5f, .5, { emissive: 0x4a1018, emissiveIntensity: .14 }),
     gum: std(0xc47878, .7),
     stitch: std(0x8b5a2b, .75),
-    brow: std(0x1a1512, .9),
+    brow: std(0x12100e, .88),
   };
   const mesh = (g, m, p = [0, 0, 0], s, r) => {
     const k = new THREE.Mesh(g, m);
@@ -66,6 +165,8 @@ export function buildGuru() {
     return k;
   };
   const S = (r, w = 22, h = 16) => new THREE.SphereGeometry(r, w, h);
+  // vyšší segmentace jen na hlavě
+  const SH = (r, w = 36, h = 28) => new THREE.SphereGeometry(r, w, h);
   const lathe = (pts, seg = 22) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), seg);
 
   const root = new THREE.Group(), body = new THREE.Group();
@@ -120,75 +221,88 @@ export function buildGuru() {
     return g;
   });
 
-  // --- hlava (Crash-like: velké oči, oblouková obočí, široký úšklebek + jazyk) ---
+  // --- hlava: jemnější geo + canvas srst / morda / iris ---
   const head = new THREE.Group();
   head.position.set(0, 2.24, .02);
   body.add(head);
-  head.add(mesh(S(.44, 28, 20), mat.fur, [0, 0, 0], [1.08, 1.0, .98]));
-  // líce / chmýří
+  // lebka — světlá srst
+  head.add(mesh(SH(.44, 40, 32), mat.furHead, [0, 0, 0], [1.08, 1.0, .98]));
+  // tmavý temenní „crown“ (husky marking pod čepicí)
+  head.add(mesh(new THREE.SphereGeometry(.42, 32, 20, 0, Math.PI * 2, 0, Math.PI * .42), mat.furCrown, [0, .06, -.02], [1.05, 1.05, 1.0], [-.15, 0, 0]));
+  // líce / multi-layer chmýří
   [-1, 1].forEach(s => {
-    head.add(mesh(S(.18, 14, 12), mat.fur, [s * .28, -.05, .08], [.85, .95, .9]));
-    head.add(mesh(S(.12, 12, 10), mat.fur, [s * .22, -.18, .18], [.9, .7, .85]));
+    head.add(mesh(SH(.19, 28, 22), mat.furHead, [s * .29, -.04, .1], [.88, 1.0, .92]));
+    head.add(mesh(SH(.13, 24, 18), mat.furMuzzle, [s * .24, -.16, .2], [.95, .75, .9]));
+    head.add(mesh(SH(.09, 18, 14), mat.furHead, [s * .32, .02, -.02], [.7, .85, .75]));
   });
-  head.add(mesh(S(.3, 20, 14), mat.fur, [0, -.2, .12], [1.25, .8, 1.1]));
-  head.add(mesh(S(.22, 20, 14), mat.fur, [0, -.13, .36], [1.05, .82, 1.4]));
-  head.add(mesh(S(.085, 14, 10), mat.nose, [0, -.06, .64], [1.25, .85, .9]));
-  head.add(mesh(S(.03, 8, 6), mat.hl, [-.03, -.025, .7]));
-  // široký otevřený úšklebek (Crash) — tlama + jazyk ven
+  // brada + bílá morda
+  head.add(mesh(SH(.3, 32, 24), mat.furMuzzle, [0, -.2, .12], [1.28, .82, 1.12]));
+  head.add(mesh(SH(.23, 32, 24), mat.furMuzzle, [0, -.12, .38], [1.08, .85, 1.42]));
+  // mostík / šedý přechod kolem očí
+  head.add(mesh(SH(.14, 24, 16), mat.furGrey, [0, .08, .34], [.7, .55, .5], [-.2, 0, 0]));
+  [-1, 1].forEach(s => head.add(mesh(SH(.1, 18, 14), mat.furGrey, [s * .14, .1, .34], [.55, .7, .4])));
+  // nos
+  head.add(mesh(SH(.09, 20, 16), mat.nose, [0, -.05, .66], [1.3, .88, .95]));
+  head.add(mesh(SH(.028, 10, 8), mat.hl, [-.028, -.02, .72]));
+  // úšklebek + jazyk
   const jaw = new THREE.Group();
   jaw.position.set(0, -.22, .48);
   head.add(jaw);
-  jaw.add(mesh(S(.14, 14, 10), mat.mouth, [0, -.02, .02], [1.35, .55, .9]));
-  jaw.add(mesh(new THREE.SphereGeometry(.11, 12, 8, 0, Math.PI * 2, 0, Math.PI * .55), mat.gum, [0, .02, .04], [1.2, .7, 1]));
-  // jazyk ven mírně doprava (goofy)
-  const tongue = mesh(new THREE.CapsuleGeometry(.045, .16, 4, 8), mat.tongue, [.06, -.08, .12], [1, 1, .7], [.55, 0, .35]);
+  jaw.add(mesh(SH(.145, 24, 16), mat.mouth, [0, -.02, .02], [1.4, .55, .95]));
+  jaw.add(mesh(new THREE.SphereGeometry(.115, 18, 12, 0, Math.PI * 2, 0, Math.PI * .55), mat.gum, [0, .025, .05], [1.25, .72, 1.05]));
+  const tongue = new THREE.Group();
+  tongue.position.set(.05, -.07, .1);
+  tongue.rotation.set(.5, .12, .32);
   jaw.add(tongue);
+  tongue.add(mesh(new THREE.CapsuleGeometry(.048, .14, 6, 12), mat.tongue, [0, 0, 0], [1, 1, .75]));
+  tongue.add(mesh(SH(.04, 12, 10), mat.tongue, [0, -.09, .02], [1.1, .7, .9]));
   head.tongue = tongue;
-  // šedá kresba na čele
-  head.add(mesh(S(.16, 16, 10), mat.furGrey, [0, .17, .33], [.55, 1.1, .45], [-.35, 0, 0]));
+  // čelo / šedá kresba
+  head.add(mesh(SH(.15, 24, 16), mat.furGrey, [0, .18, .32], [.5, 1.05, .42], [-.35, 0, 0]));
   [-1, 1].forEach(s => {
-    // obloukové obočí (výraz „ou!“ / energie)
-    head.add(mesh(new THREE.CapsuleGeometry(.022, .16, 3, 6), mat.brow, [s * .17, .22, .36], null, [0, .15 * s, s * 1.05]));
-    head.add(mesh(S(.04, 8, 6), mat.brow, [s * .08, .26, .38], [.9, .5, .6]));
-    // velké expresivní oči
+    // obloukové obočí — 2 segmenty
+    head.add(mesh(new THREE.CapsuleGeometry(.02, .11, 4, 8), mat.brow, [s * .18, .23, .37], null, [.1, .2 * s, s * 1.0]));
+    head.add(mesh(new THREE.CapsuleGeometry(.018, .08, 4, 8), mat.brow, [s * .1, .26, .38], null, [0, 0, s * .55]));
+    // oči — rim + větší iris mapa
     const e = new THREE.Group();
-    e.position.set(s * .155, .07, .38);
-    e.rotation.y = s * .28;
+    e.position.set(s * .15, .075, .39);
+    e.rotation.y = s * .26;
     head.add(e);
-    e.add(mesh(S(.125, 16, 12), mat.eyeW, [0, 0, 0], [1.15, 1.2, .65]));
-    e.add(mesh(S(.085, 14, 10), mat.iris, [0, -.004, .05], [1.05, 1.1, .5]));
-    e.add(mesh(S(.045, 10, 8), mat.pupil, [0, -.004, .078], [1, 1.05, .45]));
-    e.add(mesh(S(.022, 6, 6), mat.hl, [s * -.025 + .012, .035, .095]));
-    e.add(mesh(S(.012, 6, 6), mat.hl, [s * .025, -.015, .09]));
-    // šedé tváře
-    head.add(mesh(S(.2, 14, 10), mat.furGrey, [s * .33, .1, -.12], [.5, 1, 1]));
-    // uši
+    e.add(mesh(SH(.08, 16, 12), mat.eyeRim, [0, 0, -.01], [1.35, 1.35, .55]));
+    e.add(mesh(SH(.128, 28, 20), mat.eyeW, [0, 0, 0], [1.18, 1.22, .68]));
+    e.add(mesh(SH(.088, 24, 18), mat.iris, [0, -.002, .052], [1.05, 1.08, .55]));
+    e.add(mesh(SH(.042, 14, 12), mat.pupil, [0, -.002, .08], [1, 1.05, .48]));
+    e.add(mesh(SH(.024, 8, 8), mat.hl, [s * -.028 + .01, .038, .098]));
+    e.add(mesh(SH(.012, 8, 8), mat.hl, [s * .028, -.018, .094]));
+    // šedé boční marky
+    head.add(mesh(SH(.2, 24, 18), mat.furGrey, [s * .34, .1, -.1], [.48, 1.05, 1]));
+    head.add(mesh(SH(.1, 16, 12), mat.furCrown, [s * .3, .22, -.08], [.55, .7, .6]));
+    // uši — jemnější
     const ear = new THREE.Group();
     ear.position.set(s * .28, .36, -.02);
     ear.rotation.set(-.1, 0, -s * .32);
     head.add(ear);
-    ear.add(mesh(new THREE.ConeGeometry(.2, .46, 4, 1), mat.fur, [0, .16, 0], [1, 1, .55], [0, Math.PI / 4, 0]));
-    ear.add(mesh(new THREE.ConeGeometry(.12, .32, 4, 1), mat.pink, [0, .13, .055], [1, 1, .3], [0, Math.PI / 4, 0]));
-    ear.add(mesh(S(.06, 8, 6), mat.furGrey, [0, .32, -.02], [1.2, .6, .5]));
+    ear.add(mesh(new THREE.ConeGeometry(.2, .46, 6, 1), mat.furCrown, [0, .16, 0], [1, 1, .55], [0, Math.PI / 4, 0]));
+    ear.add(mesh(new THREE.ConeGeometry(.12, .32, 6, 1), mat.pink, [0, .13, .055], [1, 1, .3], [0, Math.PI / 4, 0]));
+    ear.add(mesh(SH(.065, 14, 12), mat.furDark, [0, .32, -.02], [1.15, .55, .5]));
     // klapky čepice
     head.add(mesh(new THREE.CapsuleGeometry(.1, .42, 4, 10), mat.leather, [s * .45, -.16, -.02], [.45, 1, 1.05], [0, 0, s * .1]));
     head.add(mesh(new THREE.TorusGeometry(.035, .01, 6, 10), mat.metal, [s * .5, -.42, .02], null, [0, Math.PI / 2, 0]));
   });
-  // čepice
-  head.add(mesh(new THREE.SphereGeometry(.47, 28, 16, 0, Math.PI * 2, 0, Math.PI * .5), mat.leather, [0, .0, -.04], [1.08, 1.12, 1.03], [-.22, 0, 0]));
+  // čepice + brýle (beze změny logiky)
+  head.add(mesh(new THREE.SphereGeometry(.47, 32, 18, 0, Math.PI * 2, 0, Math.PI * .5), mat.leather, [0, .0, -.04], [1.08, 1.12, 1.03], [-.22, 0, 0]));
   head.add(mesh(new THREE.TorusGeometry(.45, .025, 8, 32), mat.leatherDark, [0, .1, .06], [1.08, 1.03, 1], [Math.PI / 2 - .22, 0, 0]));
   head.add(mesh(new THREE.TorusGeometry(.2, .02, 6, 20, Math.PI), mat.leatherDark, [0, .3, .24], [1.2, 1, 1], [-.3, 0, 0]));
-  head.add(mesh(new THREE.SphereGeometry(.47, 20, 10, Math.PI * 1.1, Math.PI * .8, Math.PI * .35, Math.PI * .4), mat.leather, [0, 0, -.04], [1.08, 1.12, 1.03]));
-  // brýle na čele
+  head.add(mesh(new THREE.SphereGeometry(.47, 24, 12, Math.PI * 1.1, Math.PI * .8, Math.PI * .35, Math.PI * .4), mat.leather, [0, 0, -.04], [1.08, 1.12, 1.03]));
   const gog = new THREE.Group();
   gog.position.set(0, .36, .33);
   gog.rotation.x = -.95;
   head.add(gog);
   [-1, 1].forEach(s => {
-    gog.add(mesh(new THREE.CylinderGeometry(.13, .14, .1, 18), mat.leatherDark, [s * .155, 0, 0]));
-    gog.add(mesh(new THREE.TorusGeometry(.115, .022, 6, 18), mat.metal, [s * .155, .048, 0], null, [Math.PI / 2, 0, 0]));
-    gog.add(mesh(new THREE.CylinderGeometry(.11, .11, .022, 18), mat.glass, [s * .155, .05, 0]));
-    gog.add(mesh(S(.025, 6, 6), mat.hl, [s * .155 - .03, .06, .04]));
+    gog.add(mesh(new THREE.CylinderGeometry(.13, .14, .1, 20), mat.leatherDark, [s * .155, 0, 0]));
+    gog.add(mesh(new THREE.TorusGeometry(.115, .022, 6, 20), mat.metal, [s * .155, .048, 0], null, [Math.PI / 2, 0, 0]));
+    gog.add(mesh(new THREE.CylinderGeometry(.11, .11, .022, 20), mat.glass, [s * .155, .05, 0]));
+    gog.add(mesh(SH(.025, 8, 8), mat.hl, [s * .155 - .03, .06, .04]));
   });
   gog.add(mesh(new THREE.BoxGeometry(.08, .04, .05), mat.leatherDark, [0, .01, 0]));
 
