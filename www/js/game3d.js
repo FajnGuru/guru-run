@@ -195,6 +195,8 @@ addEventListener('pointerdown', () => { if (cut) { cutSkip = true; sikiTap(); } 
 const K = buildSiki(); const siki = K.root; siki.scale.setScalar(1.15); siki.position.set(0, 0, -LEN + 4); scene.add(siki);
 K.charLights = attachCharLights(siki, { fillI: .4, rimI: .52 });
 K._blinkOff = 0.95;
+// B (L2 bike) must be declared before applyGfx → syncCharLights (avoids TDZ black screen)
+let B = null;
 let sState = LEVEL === 1 ? 'idle' : 'npc', sT = 0, sLine = -1, sLineT = 0, sFromZ = 0, sToZ = 0;
 const sikiLines = () => ['Ahoj Guru! Já jsem SIKI. 🦘', 'Doběhl jsi až k Prašné bráně – klobouk dolů!', `Sesbíral jsi ${bones} ${bones === 1 ? 'kostičku' : bones >= 2 && bones <= 4 ? 'kostičky' : 'kostiček'}. Příště tě čeká další level!`];
 function say(t) { try { if (!('speechSynthesis' in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t.replace(/[🦘]/g, '')); u.lang = 'cs-CZ'; u.rate = 1.0; speechSynthesis.speak(u); } catch (e) {} }
@@ -755,7 +757,7 @@ if (LEVEL === 1) requestAnimationFrame(tick);
 window.__guru = guru;
 
 // ================= LEVEL 2: SIKI na motorce =================
-let bonesTotal = null; let B = null, obs = [], wobble = 0, finishT = -1, eng = null;
+let bonesTotal = null; let obs = [], wobble = 0, finishT = -1, eng = null;
 function startLevel2() {
   flags.forEach(f => f.parent.visible = false); siki.visible = false;
   B = buildMotorbike(); scene.add(B.root); guru = B.root;
