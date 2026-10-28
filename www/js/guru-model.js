@@ -1,4 +1,4 @@
-// Procedurální model Guru (husky) — PR1 ears: inner canal, fluff clumps, soft rim + idle twitch
+// Procedurální model Guru (husky) — PR2 nose: wet highlight + short whiskers
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
@@ -203,7 +203,9 @@ export function buildGuru() {
     leatherDark: std(0x4a2814, .68, { metalness: .06 }),
     metal: std(0xb5a078, .28, { metalness: .78 }),
     glass: std(0x1a1816, .12, { metalness: .55, emissive: 0x0a0806, emissiveIntensity: .15 }),
-    nose: std(0x141010, .38),
+    nose: std(0x12100e, .28, { metalness: .12, emissive: 0x1a1010, emissiveIntensity: .06 }),
+    noseWet: std(0x0a0808, .12, { metalness: .22 }),
+    whisker: std(0x2a2420, .55),
     eyeW: std(0xf4f7f8, .22, { emissive: 0xdde8ec, emissiveIntensity: .04 }),
     eyeRim: std(0x12100e, .9),
     eyeSocket: std(0x2a2622, .92),
@@ -375,9 +377,41 @@ export function buildGuru() {
   // mostík / šedý přechod kolem očí
   head.add(mesh(SH(.14, 24, 16), mat.furGrey, [0, .08, .34], [.7, .55, .5], [-.2, 0, 0]));
   [-1, 1].forEach(s => head.add(mesh(SH(.1, 18, 14), mat.furGrey, [s * .14, .1, .34], [.55, .7, .4])));
-  // nos
-  head.add(mesh(SH(.09, 20, 16), mat.nose, [0, -.05, .66], [1.3, .88, .95]));
-  head.add(mesh(SH(.028, 10, 8), mat.hl, [-.028, -.02, .72]));
+  // nos v2 — wetter leather, nostrils, dual HL + short whiskers
+  const noseG = new THREE.Group();
+  noseG.position.set(0, -.05, .66);
+  head.add(noseG);
+  noseG.add(mesh(SH(.09, 20, 16), mat.nose, [0, 0, 0], [1.32, .9, .98]));
+  // nostril divots (readable from front)
+  [-1, 1].forEach(s => {
+    noseG.add(mesh(SH(.028, 10, 8), mat.noseWet, [s * .045, -.012, .04], [1.15, .7, .55]));
+    noseG.add(mesh(SH(.016, 8, 6), std(0x050404, .95), [s * .048, -.014, .055], [1.05, .55, .4]));
+  });
+  // philtrum crease under nose
+  noseG.add(mesh(new THREE.BoxGeometry(.018, .05, .012), mat.noseWet, [0, -.055, .02], [1, 1, .7]));
+  // dual wet highlights (large primary + soft secondary)
+  noseG.add(mesh(SH(.026, 10, 8), mat.hl, [-.03, .012, .055]));
+  noseG.add(mesh(SH(.012, 8, 6), mat.hlSoft, [.022, -.008, .06]));
+  noseG.add(mesh(SH(.008, 6, 6), mat.hl, [-.01, -.018, .065]));
+  // short low-poly whiskers (3 per side) — thin capsules, mobile-friendly
+  [-1, 1].forEach(s => {
+    const base = [
+      [s * .16, -.1, .42, .22, -.08, .12, -.05],
+      [s * .14, -.14, .4, .26, -.12, .02, .08],
+      [s * .12, -.18, .38, .2, -.2, -.06, .18],
+    ];
+    base.forEach(([bx, by, bz, len, tiltY, tiltZ, tiltX]) => {
+      const w = new THREE.Mesh(
+        new THREE.CapsuleGeometry(.0045, len, 2, 4),
+        mat.whisker,
+      );
+      w.position.set(bx, by, bz);
+      w.rotation.set(tiltX, s * (.55 + tiltY), s * (.9 + tiltZ));
+      w.castShadow = false;
+      w.receiveShadow = false;
+      head.add(w);
+    });
+  });
   // úšklebek + jazyk
   const jaw = new THREE.Group();
   jaw.position.set(0, -.22, .48);
