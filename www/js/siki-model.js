@@ -1,14 +1,18 @@
-// Procedurální model SIKI (klokan) – PR2: srst + ocas v2 (canvas fur, muscular tail sway)
+// Procedurální model SIKI (klokan) – PR3: dres SIKI / 69 (jersey stripes + chest/arm marks)
 // API: buildSiki() → { root, body, head, arms, legs, tail }; animateSiki(g, t, opts?)
 // DŮLEŽITÉ: legs[i].children[2] = foot group (motorbike pose).
 // Tail.segs = cascade segments; bike pose sets tail.rotation.x ≈ .25 (over seat).
 import * as THREE from 'three';
 
-function textTex(text, w, h, font, color = '#fff') {
+function textTex(text, w, h, font, color = '#fff', opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
-  x.font = font; x.fillStyle = color; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.strokeStyle = '#1b2a4a'; x.lineWidth = h * .06; x.strokeText(text, w / 2, h / 2); x.fillText(text, w / 2, h / 2);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  x.clearRect(0, 0, w, h);
+  x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const stroke = opts.stroke || '#1a2040';
+  const lw = opts.lineWidth ?? h * .07;
+  if (lw > 0) { x.strokeStyle = stroke; x.lineWidth = lw; x.lineJoin = 'round'; x.strokeText(text, w / 2, h / 2); }
+  x.fillStyle = color; x.fillText(text, w / 2, h / 2);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t;
 }
 
 /** Sandy/tawny kangaroo fur grain (cached, mobile-friendly 128px). */
@@ -126,7 +130,12 @@ export function buildSiki() {
     tuft: std(0x4a2a12, .9),
     pink: std(0xe8aea4, .88),
     pinkDeep: std(0xd08078, .9),
-    red: std(0xc0282d, .8), white: std(0xf2f2f2, .8), navy: std(0x23305e, .8),
+    red: std(0xc0282d, .78),
+    redDeep: std(0x9a1e24, .82),
+    white: std(0xf5f5f5, .75),
+    whiteSoft: std(0xe8e8ec, .8),
+    navy: std(0x23305e, .78),
+    navyDeep: std(0x1a2448, .82),
     denim: std(0x52698f, .95), denimLight: std(0x8ea0bd, .95),
     leather: std(0x8a5530, .6), leatherDark: std(0x5c3418, .6),
     steel: std(0xb8bec6, .3, { metalness: .8 }), handle: std(0xc0282d, .5),
@@ -153,11 +162,25 @@ export function buildSiki() {
   const decal = (tex, w, h, p, r) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: .8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })); m.position.set(...p); if (r) m.rotation.set(...r); return m; };
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
 
-  // trup – dres
+  // trup – dres v2 (červeno-bílo-modrý athletic jersey, turnaround)
+  // red torso body
   body.add(mesh(lathe([[0, 1.25], [.4, 1.28], [.43, 1.5], [.42, 1.8], [.38, 2.05], [.29, 2.2], [.15, 2.3], [0, 2.32]]), mat.red));
-  body.add(mesh(lathe([[.0, 2.0], [.385, 2.03], [.33, 2.19], [.2, 2.3], [0, 2.32]]), mat.white, [0, .005, 0], [1.01, 1, 1.01])); // bílá ramena
-  body.add(mesh(new THREE.TorusGeometry(.14, .03, 6, 16), mat.navy, [0, 2.28, .03], null, [Math.PI / 2 - .2, 0, 0]));
-  body.add(decal(textTex('SIKI', 256, 96, 'bold 78px sans-serif'), .36, .14, [0, 1.98, .45]));
+  // white horizontal chest band (mid jersey)
+  body.add(mesh(lathe([[0, 1.72], [.425, 1.74], [.43, 1.92], [.41, 2.02], [0, 2.02]]), mat.white, [0, 0, 0], [1.015, 1, 1.015]));
+  // white yoke / upper shoulders
+  body.add(mesh(lathe([[0, 2.08], [.37, 2.1], [.33, 2.22], [.2, 2.3], [0, 2.32]]), mat.whiteSoft, [0, .002, 0], [1.02, 1, 1.02]));
+  // collar ring (navy)
+  body.add(mesh(new THREE.TorusGeometry(.145, .028, 8, 20), mat.navy, [0, 2.285, .04], null, [Math.PI / 2 - .18, 0, 0]));
+  body.add(mesh(new THREE.TorusGeometry(.13, .014, 6, 16), mat.white, [0, 2.29, .045], null, [Math.PI / 2 - .18, 0, 0]));
+  // subtle red shoulder panels under white yoke (side read)
+  [-1, 1].forEach(s => {
+    body.add(mesh(SH(.12, 12, 10), mat.redDeep, [s * .32, 2.12, .05], [.9, .7, 1.1]));
+  });
+  // bold white SIKI across upper chest (above overall bib)
+  const sikiTex = textTex('SIKI', 320, 110, 'bold 92px Arial, sans-serif', '#ffffff', { stroke: '#1a2040', lineWidth: 10 });
+  body.add(decal(sikiTex, .42, .15, [0, 1.95, .455]));
+  // tiny navy underline under SIKI for athletic look
+  body.add(mesh(new THREE.BoxGeometry(.34, .012, .01), mat.navy, [0, 1.875, .46]));
   // montérky – laclík vpředu a vzadu + popruhy
   body.add(mesh(new THREE.BoxGeometry(.5, .5, .06), mat.denim, [0, 1.6, .43]));
   body.add(mesh(new THREE.BoxGeometry(.24, .16, .02), mat.denimLight, [0, 1.62, .465]));
@@ -192,15 +215,33 @@ export function buildSiki() {
     body.add(g); return g;
   });
 
-  // paže – rukáv s pruhy, tlapky
+  // paže – bílé rukávy + pruhy (bílá / navy / bílá) + 69 na ramenou
+  const num69 = textTex('69', 160, 120, 'bold 96px Arial, sans-serif', '#ffffff', { stroke: '#1a2040', lineWidth: 9 });
   const arms = [-1, 1].map(s => {
     const g = new THREE.Group(); g.position.set(s * .4, 2.08, 0); g.rotation.z = s * .14; body.add(g);
-    g.add(mesh(S(.12), mat.white));
-    g.add(mesh(lathe([[0, 0], [.15, -.02], [.14, -.4], [.13, -.66], [0, -.66]], 14), mat.red));
-    g.add(mesh(new THREE.CylinderGeometry(.143, .143, .08, 14), mat.navy, [0, -.38, 0]));
-    g.add(mesh(new THREE.CylinderGeometry(.141, .141, .05, 14), mat.white, [0, -.46, 0]));
-    g.add(mesh(new THREE.CylinderGeometry(.138, .138, .05, 14), mat.white, [0, -.31, 0]));
-    const n = decal(textTex('69', 128, 96, 'bold 80px sans-serif'), .24, .18, [s * .152, -.17, 0], [0, s * Math.PI / 2, 0]); g.add(n);
+    // shoulder pad (white → red blend at deltoid)
+    g.add(mesh(S(.13, 14, 12), mat.white));
+    g.add(mesh(S(.1, 12, 10), mat.red, [0, -.02, 0], [.95, .85, .95]));
+    // white long sleeve body
+    g.add(mesh(lathe([[0, 0], [.155, -.02], [.15, -.22], [.145, -.48], [.135, -.68], [0, -.68]], 16), mat.white));
+    // upper-arm red panel strip (athletic) under 69
+    g.add(mesh(new THREE.CylinderGeometry(.152, .152, .16, 16), mat.red, [0, -.14, 0]));
+    // forearm stripe stack near cuff: thick white / thin navy / white / thin red hint
+    g.add(mesh(new THREE.CylinderGeometry(.148, .148, .07, 16), mat.whiteSoft, [0, -.42, 0]));
+    g.add(mesh(new THREE.CylinderGeometry(.15, .15, .045, 16), mat.navy, [0, -.48, 0]));
+    g.add(mesh(new THREE.CylinderGeometry(.147, .147, .055, 16), mat.white, [0, -.535, 0]));
+    g.add(mesh(new THREE.CylinderGeometry(.149, .149, .03, 14), mat.redDeep, [0, -.575, 0]));
+    g.add(mesh(new THREE.CylinderGeometry(.146, .146, .04, 14), mat.navyDeep, [0, -.61, 0]));
+    // cuff rim
+    g.add(mesh(new THREE.CylinderGeometry(.14, .138, .05, 14), mat.whiteSoft, [0, -.655, 0]));
+    // bold 69 on outer upper arm / shoulder
+    const n = decal(num69, .22, .17, [s * .155, -.15, 0], [0, s * Math.PI / 2, 0]);
+    g.add(n);
+    // soft side read of 69 (slightly forward so camera catches it)
+    const n2 = decal(num69, .18, .14, [s * .12, -.15, .1], [0, s * Math.PI / 3, 0]);
+    n2.material.opacity = .85; n2.material.transparent = true;
+    g.add(n2);
+    // fur hand
     g.add(mesh(S(.13), mat.fur, [0, -.78, .02], [.85, 1.1, .85]));
     return g;
   });
