@@ -180,7 +180,7 @@ const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visib
 F.charLights = attachCharLights(fis, { fillI: .4, rimI: .52 });
 F._blinkOff = 1.85;
 const fisBlob = makeGroundBlob(.55, .28); fis.add(fisBlob);
-let fState = LEVEL === 1 ? 'idle' : 'npc', fVy = 0, fT = 0, fSpeed = 0, fLeadWait = false;
+let fState = LEVEL === 1 ? 'idle' : 'npc', fVy = 0, fT = 0, fSpeed = 0, fLeadWait = false, fLost = false, fWaitToast = false;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
 addEventListener('keydown', () => { if (cut) { cutSkip = true; sikiTap(); } });
@@ -432,8 +432,11 @@ function updateFiskuleLead(dt, now) {
   const gp = guru.position, fp = fis.position;
   const ahead = gp.z - fp.z; // >0 when she is deeper (-Z) than Guru
   const WAIT_AHEAD = 22, RESUME_AHEAD = 12;
-  if (!fLeadWait && ahead > WAIT_AHEAD) fLeadWait = true;
-  if (fLeadWait && ahead < RESUME_AHEAD) fLeadWait = false;
+  if (!fLeadWait && ahead > WAIT_AHEAD) {
+    fLeadWait = true;
+    if (!fWaitToast) { fWaitToast = true; showToast('Fiškule na tebe čeká!'); }
+  }
+  if (fLeadWait && ahead < RESUME_AHEAD) { fLeadWait = false; fWaitToast = false; }
   // soft side-weave + dodge path obstacles
   let tx = Math.sin(now / 900) * 1.1;
   for (const o of l3Obs) {
@@ -485,6 +488,38 @@ function updateFiskuleLead(dt, now) {
   animateGuru(F, { dt, now }, fp.y > 0 ? 0 : fSpeed, true);
   if (fp.y > 0) { F.legs[0].rotation.x = -.8; F.legs[1].rotation.x = .4; }
 }
+function updateL3FollowFeel(now) {
+  // L3 soft leash: compass → Fiškule, toast when lost, gentle rejoin (no hard fail)
+  if (fState !== 'lead') return;
+  const gp = guru.position, fp = fis.position;
+  const ahead = gp.z - fp.z;
+  const dist = Math.hypot(gp.x - fp.x, gp.z - fp.z);
+  const angTo = Math.atan2(fp.x - gp.x, fp.z - gp.z);
+  const face = Math.atan2(-Math.sin(heading), -Math.cos(heading));
+  compassEl.style.transform = `rotate(${(-(angTo - face) * 180 / Math.PI) - 90}deg)`;
+  const LOST = 32, CLOSE = 14, SNAP = 56;
+  if (ahead > LOST || dist > LOST) {
+    if (!fLost) {
+      fLost = true;
+      showToast('Ztratil jsi Fiškuli! 🐰');
+      if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(25);
+    }
+    compassEl.style.opacity = String(.5 + .5 * Math.abs(Math.sin(now / 220)));
+  } else {
+    compassEl.style.opacity = '';
+    if (fLost && ahead < CLOSE && dist < CLOSE + 4) {
+      fLost = false;
+      showToast('Dohonil jsi Fiškuli ✔');
+    }
+  }
+  // extreme gap only — soft rejoin, not a fail/death
+  if (dist > SNAP) {
+    fp.set(THREE.MathUtils.clamp(gp.x + .8, -WALK_X + .5, WALK_X - .5), 0, gp.z - 12);
+    fis.rotation.y = Math.PI; fLeadWait = true; fSpeed = 0; fVy = 0;
+    fLost = false; fWaitToast = true;
+    showToast('Fiškule tě našla — pojď!');
+  }
+}
 function holdCompass() { F.arms[0].rotation.set(-1.1, 0, -.35); if (F.compass) F.compass.needle.rotation.z = Math.atan2(0 - fis.position.x, -LEN - fis.position.z) - fis.rotation.y; }
 function fJump(dt, mx, mz) {
   const p = fis.position, grounded = p.y <= 0 && !holeAt(p.z);
@@ -492,7 +527,7 @@ function fJump(dt, mx, mz) {
   if (!grounded || fVy > 0) { fVy -= GRAV * dt; p.y += fVy * dt; if (p.y < 0 && !holeAt(p.z)) { p.y = 0; fVy = 0; } }
 }
 window.__tp = z => { guru.position.set(0, 0, z); checkpoint = Math.min(checkpoint, z + 1); camPos.set(0, 4, z + 8); };
-window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut, leadWait: fLeadWait, fSpeed });
+window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut, leadWait: fLeadWait, lost: fLost, fSpeed });
 
 // --- holubi útočníci ---
 const birds = [];
@@ -595,6 +630,7 @@ function tick(now) {
   if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
   if (LEVEL === 3) updateL3Obstacles();
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
+  else if (LEVEL === 3 && fState === 'lead') updateL3FollowFeel(now);
   animateGuru(G, { dt, now, lookCam }, grounded ? speed : 0, running);
   if (!grounded) {
     const up = vy > 0, L = (c, tgt) => c + (tgt - c) * Math.min(1, dt * 7);
@@ -840,9 +876,10 @@ function startLevel3() {
   fis.visible = true;
   fis.position.set(.9, 0, -16);
   fis.rotation.y = Math.PI; // face deeper forest (-Z)
-  fState = 'lead'; fLeadWait = false; fSpeed = 0; fVy = 0;
+  fState = 'lead'; fLeadWait = false; fLost = false; fWaitToast = false; fSpeed = 0; fVy = 0;
+  compassEl.classList.add('on'); compassEl.style.opacity = '';
   showToast('Level 3: Následuj Fiškuli 🌲');
-  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length };
+  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length };
   requestAnimationFrame(tick);
 }
 function syncForestDensity() {
