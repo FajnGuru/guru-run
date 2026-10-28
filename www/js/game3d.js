@@ -5,7 +5,8 @@ import { buildFiskule } from './fiskule-model.js';
 import { buildBird, flap } from './bird-model.js';
 import { buildSiki, animateSiki } from './siki-model.js';
 import { buildMotorbike } from './motorbike-model.js';
-const LEVEL = new URLSearchParams(location.search).get('level') === '2' ? 2 : 1;
+const _lvQ = new URLSearchParams(location.search).get('level');
+const LEVEL = _lvQ === '3' ? 3 : _lvQ === '2' ? 2 : 1;
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
 const GFX_KEY = 'guru-run-gfx';
@@ -54,8 +55,8 @@ const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 });
 // --- ulice ---
 const LEN = 800, HALF_W = 5, WALK_X = HALF_W + 3.2;
 // díry: z začátek (blíž startu), délka – rostoucí obtížnost
-const HOLES = LEVEL === 2 ? [] : [[-60, 2.4], [-130, 2.8], [-200, 3.2], [-270, 3.6], [-340, 3.6], [-410, 4.0], [-480, 4.2], [-550, 4.4], [-620, 4.6], [-690, 4.8]].map(([z, l]) => ({ z0: z, z1: z - l }));
-const CHECKS = LEVEL === 2 ? [0] : [0, -120, -260, -400, -540, -680];
+const HOLES = LEVEL === 1 ? [[-60, 2.4], [-130, 2.8], [-200, 3.2], [-270, 3.6], [-340, 3.6], [-410, 4.0], [-480, 4.2], [-550, 4.4], [-620, 4.6], [-690, 4.8]].map(([z, l]) => ({ z0: z, z1: z - l })) : [];
+const CHECKS = LEVEL === 1 ? [0, -120, -260, -400, -540, -680] : [0];
 const cv = document.createElement('canvas'); cv.width = cv.height = 256; const cx = cv.getContext('2d');
 cx.fillStyle = '#4c4f55'; cx.fillRect(0, 0, 256, 256);
 for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { cx.fillStyle = `hsl(220,4%,${38 + Math.random() * 14}%)`; cx.beginPath(); cx.roundRect(x * 32 + (y % 2) * 16 + 2, y * 32 + 2, 28, 28, 6); cx.fill(); }
@@ -175,7 +176,7 @@ const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visib
 F.charLights = attachCharLights(fis, { fillI: .4, rimI: .52 });
 F._blinkOff = 1.85;
 const fisBlob = makeGroundBlob(.55, .28); fis.add(fisBlob);
-let fState = LEVEL === 2 ? 'npc' : 'idle', fVy = 0, fT = 0, fSpeed = 0;
+let fState = LEVEL === 1 ? 'idle' : 'npc', fVy = 0, fT = 0, fSpeed = 0;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
 addEventListener('keydown', () => { if (cut) { cutSkip = true; sikiTap(); } });
@@ -184,7 +185,7 @@ addEventListener('pointerdown', () => { if (cut) { cutSkip = true; sikiTap(); } 
 const K = buildSiki(); const siki = K.root; siki.scale.setScalar(1.15); siki.position.set(0, 0, -LEN + 4); scene.add(siki);
 K.charLights = attachCharLights(siki, { fillI: .4, rimI: .52 });
 K._blinkOff = 0.95;
-let sState = LEVEL === 2 ? 'npc' : 'idle', sT = 0, sLine = -1, sLineT = 0, sFromZ = 0, sToZ = 0;
+let sState = LEVEL === 1 ? 'idle' : 'npc', sT = 0, sLine = -1, sLineT = 0, sFromZ = 0, sToZ = 0;
 const sikiLines = () => ['Ahoj Guru! Já jsem SIKI. 🦘', 'Doběhl jsi až k Prašné bráně – klobouk dolů!', `Sesbíral jsi ${bones} ${bones === 1 ? 'kostičku' : bones >= 2 && bones <= 4 ? 'kostičky' : 'kostiček'}. Příště tě čeká další level!`];
 function say(t) { try { if (!('speechSynthesis' in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t.replace(/[🦘]/g, '')); u.lang = 'cs-CZ'; u.rate = 1.0; speechSynthesis.speak(u); } catch (e) {} }
 function showLine(i, speak) { sLine = i; sLineT = 0; const t = sikiLines()[i]; bubble.innerHTML = '<b>SIKI:</b> ' + t + '<small>ťukni pro pokračování</small>'; bubble.classList.add('on'); if (speak) say(t); }
@@ -331,7 +332,7 @@ function applyCtrl(mode, { persist = true } = {}) {
 }
 
 const over = document.getElementById('over');
-function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonesTotal ?? bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; over.classList.add('on'); }
+function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonesTotal ?? bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; if (win && LEVEL === 2) document.getElementById('l3btn').style.display = 'inline-block'; over.classList.add('on'); }
 let raceT = 0; const fmtT = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor(t * 10 % 10)}`;
 
 // --- smyčka ---
@@ -447,7 +448,7 @@ window.__forceDive = () => { const b = birds.find(b => b.state === 'circle' || b
 function placeCircle(b, now) { const gp = guru.position; b.a += .016; b.root.position.set(Math.sin(b.a) * 5, 6.5 + Math.sin(b.a * 2) * .6, gp.z + (LEVEL === 2 ? 22 : -12) + Math.cos(b.a) * 5); b.root.rotation.y = b.a + Math.PI / 2; }
 function updateBirds(dt, now) {
   const gp = guru.position, prog = Math.min(1, Math.max(0, (-gp.z - 120) / (LEN - 120)));
-  const active = (LEVEL === 2 ? gp.z > -LEN + 164 && gp.z < -40 : gp.z < -120 && gp.z > -LEN + 30) && !cut && fState !== 'cut' && !done;
+  const active = (LEVEL === 2 ? gp.z > -LEN + 164 && gp.z < -40 : LEVEL === 1 && gp.z < -120 && gp.z > -LEN + 30) && !cut && fState !== 'cut' && !done;
   birds.forEach((b, i) => { if (i < 2 + Math.round(prog * 2) && active && b.state === 'off') { b.state = 'circle'; b.root.visible = true; } });
   const attacking = birds.filter(b => b.state === 'tele' || b.state === 'dive').length;
   birdTimer -= dt; if (window.__noAuto) birdTimer = 99;
@@ -689,4 +690,33 @@ function tick2(now) {
   window.__obs = obs; window.__l2 = { x: gp.x, z: gp.z, speed, lives, done, obs: obs.length, raceT };
   requestAnimationFrame(tick2);
 }
+
+// ================= LEVEL 3: Les (stub entry) =================
+function startLevel3() {
+  // green fog placeholder — real forest comes in later PRs
+  scene.background = new THREE.Color(0x6a9a6e);
+  scene.fog = new THREE.Fog(0x6a9a6e, 22, 95);
+  hm.visible = false; rm.visible = false; winM.visible = false;
+  gate.visible = false; siki.visible = false;
+  flags.forEach(f => { if (f.parent) f.parent.visible = false; });
+  // soft grass plane over street cobbles
+  const grass = new THREE.Mesh(
+    new THREE.PlaneGeometry(36, LEN + 48),
+    new THREE.MeshStandardMaterial({ color: 0x4f7d3a, roughness: .96 }),
+  );
+  grass.rotation.x = -Math.PI / 2;
+  grass.position.set(0, .05, -LEN / 2);
+  grass.receiveShadow = true;
+  scene.add(grass);
+  // Guru walk controls (reuse L1 tick); Fiškule ahead as placeholder
+  guru.position.set(0, 0, 0);
+  heading = 0; speed = 0; camPos.set(0, 4, 8);
+  fis.visible = true;
+  fis.position.set(.9, 0, -16);
+  fis.rotation.y = Math.PI; // face deeper into the forest (-Z)
+  showToast('Level 3: Les (stub) 🌲');
+  window.__l3 = { stub: true, level: 3 };
+  requestAnimationFrame(tick);
+}
 if (LEVEL === 2) startLevel2();
+if (LEVEL === 3) startLevel3();
