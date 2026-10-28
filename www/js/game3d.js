@@ -44,6 +44,7 @@ function applyGfx(mode, { persist = true } = {}) {
   if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   syncCharLights();
   syncForestDensity();
+  syncL3Atmosphere();
   syncGfxUi();
   resize();
 }
@@ -143,6 +144,8 @@ function makeGroundBlob(r = .55, opacity = .3) {
   m.renderOrder = -2;
   m.receiveShadow = false;
   m.castShadow = false;
+  m.userData.baseOp = opacity;
+  m.userData.airOp = opacity * .6;
   return m;
 }
 function syncGroundBlob(root, blob, { airborne = false, hidden = false } = {}) {
@@ -154,7 +157,8 @@ function syncGroundBlob(root, blob, { airborne = false, hidden = false } = {}) {
   const lift = Math.max(0, root.position.y);
   const s = airborne || lift > .05 ? Math.max(.45, 1 - lift * .22) : 1;
   blob.scale.setScalar(s);
-  blob.material.opacity = (airborne || lift > .05 ? .18 : .3) * (root.visible ? 1 : 0);
+  const base = blob.userData.baseOp ?? .3, air = blob.userData.airOp ?? .18;
+  blob.material.opacity = (airborne || lift > .05 ? air : base) * (root.visible ? 1 : 0);
 }
 /** Soft contact under a bike wheel — local xz from wheel world pos, y pinned to ground. */
 function syncBikeWheelBlob(blob, wheel, root, airborne = false) {
@@ -917,14 +921,30 @@ function makeForestTex(kind) {
   return t;
 }
 function startLevel3() {
-  // forest sky + fog (not city blue)
+  // forest sky + fog (not city blue) — tuned further in syncL3Atmosphere
   const fogCol = 0x7a9a72;
   scene.background = new THREE.Color(fogCol);
-  scene.fog = new THREE.Fog(fogCol, 18, 78);
+  scene.fog = new THREE.Fog(fogCol, 20, 85);
   // canopy-filtered hemisphere + softer sun
-  hemi.color.setHex(0xc8e0b8); hemi.groundColor.setHex(0x3a4a28); hemi.intensity = 1.05;
-  sun.color.setHex(0xffe2b0); sun.intensity = 1.55;
+  hemi.color.setHex(0xc8e0b8); hemi.groundColor.setHex(0x3a4a28); hemi.intensity = 1.08;
+  sun.color.setHex(0xffe2b0); sun.intensity = 1.6;
   sun.position.set(8, 22, 4);
+  // forest rim/fill on Guru + Fiškule (no EffectComposer)
+  if (G.charLights) {
+    G.charLights.fill.color.setHex(0xffefd0);
+    G.charLights.rim.color.setHex(0xb5e0c4);
+    G.charLights.fillI = .52; G.charLights.rimI = .64;
+  }
+  if (F.charLights) {
+    F.charLights.fill.color.setHex(0xffefd0);
+    F.charLights.rim.color.setHex(0xb5e0c4);
+    F.charLights.fillI = .48; F.charLights.rimI = .6;
+  }
+  // stronger ground blobs on dirt path
+  if (guruBlob) { guruBlob.userData.baseOp = .4; guruBlob.userData.airOp = .22; guruBlob.material.color.setHex(0x1c1408); }
+  if (fisBlob) { fisBlob.userData.baseOp = .36; fisBlob.userData.airOp = .2; fisBlob.material.color.setHex(0x1c1408); }
+  syncCharLights();
+  syncL3Atmosphere();
   // hide city street / houses / gate
   cityGround.forEach(m => { m.visible = false; });
   hm.visible = false; rm.visible = false; winM.visible = false;
@@ -963,6 +983,17 @@ function startLevel3() {
     berm.receiveShadow = true;
     scene.add(berm);
   });
+  // path edge lines — readability of runnable strip
+  [-1, 1].forEach(sg => {
+    const edge = new THREE.Mesh(
+      new THREE.PlaneGeometry(.42, LEN + 40),
+      new THREE.MeshStandardMaterial({ color: 0x5c452c, roughness: .96 }),
+    );
+    edge.rotation.x = -Math.PI / 2;
+    edge.position.set(sg * (pathW / 2 - .15), .046, -LEN / 2);
+    edge.receiveShadow = true;
+    scene.add(edge);
+  });
   // Instanced trees along path sides (path stays clear)
   buildForestTrees(pathW);
   // Roots / rocks / logs on the path (jump over — replaces L1 holes)
@@ -985,8 +1016,25 @@ function startLevel3() {
   bubble.innerHTML = 'Guru! 🐰 Pojď za mnou do lesa!<br>Na konci stezky je mýtina — následuj mě.<small>ťukni nebo stiskni klávesu</small>';
   bubble.classList.add('on');
   if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(25);
-  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, threats: true, cutscenes: true, hud: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length, branches: l3Branches.length, checks: CHECKS.length, endZ: L3_END_Z };
+  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, threats: true, cutscenes: true, hud: true, polish: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length, branches: l3Branches.length, checks: CHECKS.length, endZ: L3_END_Z, gfx: gfxMode };
   requestAnimationFrame(tick);
+}
+function syncL3Atmosphere() {
+  // L3 only: soften fog/lights further in Výkon; keep quality readable
+  if (LEVEL !== 3 || !scene.fog) return;
+  if (gfxMode === 'perf') {
+    scene.fog.near = 12;
+    scene.fog.far = 52;
+    hemi.intensity = .92;
+    sun.intensity = 1.2;
+    sun.castShadow = false;
+  } else {
+    scene.fog.near = 20;
+    scene.fog.far = 85;
+    hemi.intensity = 1.08;
+    sun.intensity = 1.6;
+    sun.castShadow = true;
+  }
 }
 function syncForestDensity() {
   if (!l3Forest) return;
@@ -1214,27 +1262,45 @@ function buildForestBranches(pathW) {
 function buildForestClearing() {
   const cz = L3_END_Z - 4;
   const meadow = new THREE.Mesh(
-    new THREE.CircleGeometry(15, 28),
-    new THREE.MeshStandardMaterial({ color: 0xc8e090, roughness: .96 }),
+    new THREE.CircleGeometry(15.5, 28),
+    new THREE.MeshStandardMaterial({ color: 0xd0e898, roughness: .95 }),
   );
   meadow.rotation.x = -Math.PI / 2;
   meadow.position.set(0, .055, cz);
   meadow.receiveShadow = true;
   scene.add(meadow);
+  // bright sun-patch center (MeshBasic — cheap, no postFX)
+  const patch = new THREE.Mesh(
+    new THREE.CircleGeometry(5.5, 20),
+    new THREE.MeshBasicMaterial({ color: 0xe8f5b0, transparent: true, opacity: .4, depthWrite: false }),
+  );
+  patch.rotation.x = -Math.PI / 2;
+  patch.position.set(0, .062, cz);
+  scene.add(patch);
   // soft rim of taller grass
   const rim = new THREE.Mesh(
-    new THREE.RingGeometry(12.5, 15.2, 28),
-    new THREE.MeshStandardMaterial({ color: 0x5a8a3a, roughness: .98, side: THREE.DoubleSide }),
+    new THREE.RingGeometry(12.8, 15.6, 28),
+    new THREE.MeshStandardMaterial({ color: 0x4e7e34, roughness: .98, side: THREE.DoubleSide }),
   );
   rim.rotation.x = -Math.PI / 2;
   rim.position.set(0, .06, cz);
   scene.add(rim);
-  // cheap flower dots (no postFX)
+  // dirt tongue from path into meadow
+  const tongue = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.2, 10),
+    new THREE.MeshStandardMaterial({ color: 0xc4a07a, roughness: .94 }),
+  );
+  tongue.rotation.x = -Math.PI / 2;
+  tongue.position.set(0, .05, cz + 9);
+  tongue.receiveShadow = true;
+  scene.add(tongue);
+  // cheap flower dots (fewer in Výkon)
   const petalCols = [0xfff0a0, 0xffb4c8, 0xe8f0ff];
   const stemM = M(0x3a7a30);
   let seed = 0xC1EA12;
   const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  for (let i = 0; i < 32; i++) {
+  const nFlowers = gfxMode === 'perf' ? 14 : 36;
+  for (let i = 0; i < nFlowers; i++) {
     const a = rnd() * Math.PI * 2, r = 2.2 + rnd() * 10.5;
     const g = new THREE.Group();
     const s = new THREE.Mesh(new THREE.CylinderGeometry(.02, .03, .32, 4), stemM);
