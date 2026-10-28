@@ -41,6 +41,7 @@ function applyGfx(mode, { persist = true } = {}) {
     sun.shadow.mapSize.set(1024, 1024);
   }
   if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  syncCharLights();
   syncGfxUi();
   resize();
 }
@@ -102,7 +103,7 @@ const arch = new THREE.Mesh(new THREE.BoxGeometry(7, 9, 8.2), M(0x111111)); arch
 [[-7, 1], [7, 1]].forEach(([x]) => { const sp = new THREE.Mesh(new THREE.ConeGeometry(1, 6, 4), M(0x2b2b2b)); sp.position.set(x, 25, 3); gate.add(sp); });
 gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 
-// Per-character rim/fill (no EffectComposer) — follows each root
+// Per-character rim/fill (no EffectComposer) — follows each root; disabled in Výkon
 function attachCharLights(root, { fillI = .42, rimI = .55 } = {}) {
   const fill = new THREE.PointLight(0xffe6cc, fillI, 7, 2);
   fill.position.set(.55, 1.65, 1.35);
@@ -112,16 +113,53 @@ function attachCharLights(root, { fillI = .42, rimI = .55 } = {}) {
   rim.position.set(-1.05, 1.95, -1.25);
   rim.castShadow = false;
   root.add(rim);
-  return { fill, rim };
+  return { fill, rim, fillI, rimI };
+}
+function syncCharLights() {
+  const on = gfxMode !== 'perf';
+  for (const cl of [G?.charLights, F?.charLights]) {
+    if (!cl) continue;
+    cl.fill.intensity = on ? cl.fillI : 0;
+    cl.rim.intensity = on ? cl.rimI : 0;
+    cl.fill.visible = on;
+    cl.rim.visible = on;
+  }
+}
+
+// Soft ground-contact silhouette (lightweight blob — not EffectComposer / not sun shadow map)
+function makeGroundBlob(r = .55, opacity = .3) {
+  const m = new THREE.Mesh(
+    new THREE.CircleGeometry(r, 20).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x1a120c, transparent: true, opacity, depthWrite: false }),
+  );
+  m.renderOrder = -2;
+  m.receiveShadow = false;
+  m.castShadow = false;
+  return m;
+}
+function syncGroundBlob(root, blob, { airborne = false, hidden = false } = {}) {
+  if (!blob) return;
+  if (hidden || !root.visible) { blob.visible = false; return; }
+  blob.visible = true;
+  // keep blob on ground under character even when jumping
+  blob.position.y = -root.position.y + .025;
+  const lift = Math.max(0, root.position.y);
+  const s = airborne || lift > .05 ? Math.max(.45, 1 - lift * .22) : 1;
+  blob.scale.setScalar(s);
+  blob.material.opacity = (airborne || lift > .05 ? .18 : .3) * (root.visible ? 1 : 0);
 }
 
 // --- Guru (model v guru-model.js) ---
 const G = buildGuru(); let guru = G.root; guru.scale.setScalar(1); scene.add(guru);
 G.charLights = attachCharLights(guru, { fillI: .45, rimI: .58 });
+G._blinkOff = 0.15;
+const guruBlob = makeGroundBlob(.62, .32); guru.add(guruBlob);
 
 // --- Fiškule (parťačka) ---
 const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visible = false; scene.add(fis);
 F.charLights = attachCharLights(fis, { fillI: .4, rimI: .52 });
+F._blinkOff = 1.85;
+const fisBlob = makeGroundBlob(.55, .28); fis.add(fisBlob);
 let fState = LEVEL === 2 ? 'npc' : 'idle', fVy = 0, fT = 0, fSpeed = 0;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
@@ -432,7 +470,7 @@ window.__birds = () => birds.map(b => b.state);
 function tick(now) {
   if (done) { renderer.render(scene, camera); return requestAnimationFrame(tick); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if (cut) { if (sState === 'cut') updateSiki(dt, now); else updateFiskule(dt, now); updateBones(dt, now); renderer.render(scene, camera); return requestAnimationFrame(tick); }
+  if (cut) { if (sState === 'cut') updateSiki(dt, now); else updateFiskule(dt, now); updateBones(dt, now); syncGroundBlob(guru, guruBlob, { airborne: false }); syncGroundBlob(fis, fisBlob, { airborne: fis.position.y > .05, hidden: !fis.visible }); renderer.render(scene, camera); return requestAnimationFrame(tick); }
   let fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - jy;
   let turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - jx;
   fwd = THREE.MathUtils.clamp(fwd, -1, 1); turn = THREE.MathUtils.clamp(turn, -1, 1);
@@ -485,6 +523,8 @@ function tick(now) {
   }
   squash *= Math.pow(.0005, dt); const q = squash > 0 ? squash * .25 : squash * .18;
   guru.scale.set(1 + q, 1 - q * 1.4, 1 + q);
+  syncGroundBlob(guru, guruBlob, { airborne: !grounded || falling });
+  syncGroundBlob(fis, fisBlob, { airborne: fis.position.y > .05, hidden: !fis.visible || fState === 'idle' });
   // kamera za Guruem
   const back = new THREE.Vector3(Math.sin(heading) * 6.5, 3.6, Math.cos(heading) * 6.5);
   camPos.lerp(tmp.copy(guru.position).add(back), 1 - Math.pow(.02, dt));
