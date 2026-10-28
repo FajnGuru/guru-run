@@ -1,4 +1,4 @@
-// Procedurální retro motorka (café racer / scrambler) – PR8: rider pose on bike
+// Procedurální retro motorka (café racer / scrambler) – PR10 polish: tank logo readability
 import * as THREE from 'three';
 import { buildSiki } from './siki-model.js';
 
@@ -152,17 +152,17 @@ export function buildMotorbike(withRider = true) {
   // filler cap
   tank.add(mesh(new THREE.CylinderGeometry(.05, .055, .03, 14), m.chrome, [0, .14, .05]));
   tank.add(mesh(new THREE.CylinderGeometry(.02, .02, .02, 8), m.black, [0, .16, .05]));
-  // bold black SIKI on both flanks
-  const sikiTank = textTex('SIKI', { fill: '#0a0a0a', size: 92, w: 340, h: 120 });
+  // bold black SIKI on both flanks — larger for mid-distance read
+  const sikiTank = textTex('SIKI', { fill: '#050505', size: 110, w: 400, h: 140, stroke: '#ffffff', lineWidth: 6 });
   [-1, 1].forEach(s => {
     const d = new THREE.Mesh(
-      new THREE.PlaneGeometry(.32, .12),
+      new THREE.PlaneGeometry(.4, .15),
       new THREE.MeshStandardMaterial({
-        map: sikiTank, transparent: true, roughness: .55, metalness: .1,
+        map: sikiTank, transparent: true, roughness: .45, metalness: .05,
         depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4,
       })
     );
-    d.position.set(s * .245, .02, .02);
+    d.position.set(s * .25, .02, .02);
     d.rotation.y = s * Math.PI / 2;
     d.rotation.z = s * -.02;
     tank.add(d);
