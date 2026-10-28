@@ -250,12 +250,28 @@ export function buildGuru() {
   head.add(jaw);
   jaw.add(mesh(SH(.145, 24, 16), mat.mouth, [0, -.02, .02], [1.4, .55, .95]));
   jaw.add(mesh(new THREE.SphereGeometry(.115, 18, 12, 0, Math.PI * 2, 0, Math.PI * .55), mat.gum, [0, .025, .05], [1.25, .72, 1.05]));
+  // plochý „plácající“ jazyk (Crash) — extrude silhouette, ne tyčka
   const tongue = new THREE.Group();
-  tongue.position.set(.05, -.07, .1);
-  tongue.rotation.set(.5, .12, .32);
+  tongue.position.set(.02, -.06, .14);
+  tongue.rotation.set(1.05, .15, .45);
   jaw.add(tongue);
-  tongue.add(mesh(new THREE.CapsuleGeometry(.048, .14, 6, 12), mat.tongue, [0, 0, 0], [1, 1, .75]));
-  tongue.add(mesh(SH(.04, 12, 10), mat.tongue, [0, -.09, .02], [1.1, .7, .9]));
+  const tShape = new THREE.Shape();
+  tShape.moveTo(0, 0);
+  tShape.bezierCurveTo(.055, .01, .075, .08, .055, .16);
+  tShape.bezierCurveTo(.035, .22, .01, .25, 0, .255);
+  tShape.bezierCurveTo(-.01, .25, -.035, .22, -.055, .16);
+  tShape.bezierCurveTo(-.075, .08, -.055, .01, 0, 0);
+  const tGeo = new THREE.ExtrudeGeometry(tShape, {
+    depth: .016, bevelEnabled: true, bevelThickness: .01, bevelSize: .014, bevelSegments: 2, curveSegments: 10,
+  });
+  tGeo.translate(0, 0, -.008);
+  const tMesh = new THREE.Mesh(tGeo, mat.tongue);
+  tMesh.castShadow = true;
+  tongue.add(tMesh);
+  // střední rýha
+  tongue.add(mesh(new THREE.BoxGeometry(.008, .18, .004), std(0xc43a4e, .55), [0, .12, .012]));
+  tongue.userData.baseX = tongue.rotation.x;
+  tongue.userData.baseZ = tongue.rotation.z;
   head.tongue = tongue;
   // čelo / šedá kresba
   head.add(mesh(SH(.15, 24, 16), mat.furGrey, [0, .18, .32], [.5, 1.05, .42], [-.35, 0, 0]));
@@ -343,5 +359,13 @@ export function animateGuru(g, t, speed, running) {
   g.head.rotation.y = lerp(g.head.rotation.y, tgtY, 10);
   g.head.rotation.z = lerp(g.head.rotation.z, tgtZ, 10);
   g.head.rotation.x = lerp(g.head.rotation.x, tgtX, 10);
+  // jemný flop jazyka
+  if (g.head.tongue) {
+    const tong = g.head.tongue;
+    const bx = tong.userData.baseX ?? tong.rotation.x;
+    const bz = tong.userData.baseZ ?? tong.rotation.z;
+    tong.rotation.x = bx + Math.sin(t.now / 320) * .1;
+    tong.rotation.z = bz + Math.sin(t.now / 260) * .14;
+  }
   g.tail.rotation.y = Math.sin(t.now / (a > 1 ? 90 : 160)) * .55; g.tail.rotation.x = -.2;
 }
