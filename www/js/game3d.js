@@ -148,6 +148,20 @@ function syncGroundBlob(root, blob, { airborne = false, hidden = false } = {}) {
   blob.scale.setScalar(s);
   blob.material.opacity = (airborne || lift > .05 ? .18 : .3) * (root.visible ? 1 : 0);
 }
+/** Soft contact under a bike wheel — local xz from wheel world pos, y pinned to ground. */
+function syncBikeWheelBlob(blob, wheel, root, airborne = false) {
+  if (!blob || !wheel || !root) return;
+  if (!root.visible) { blob.visible = false; return; }
+  blob.visible = true;
+  const v = root.userData._wblobV || (root.userData._wblobV = new THREE.Vector3());
+  wheel.getWorldPosition(v);
+  root.worldToLocal(v);
+  blob.position.set(v.x, -root.position.y + .02, v.z);
+  const lift = Math.max(0, root.position.y);
+  const s = airborne || lift > .05 ? Math.max(.4, 1 - lift * .25) : 1;
+  blob.scale.setScalar(s);
+  blob.material.opacity = (airborne || lift > .05 ? .14 : .26);
+}
 
 // --- Guru (model v guru-model.js) ---
 const G = buildGuru(); let guru = G.root; guru.scale.setScalar(1); scene.add(guru);
@@ -542,6 +556,9 @@ function startLevel2() {
   flags.forEach(f => f.parent.visible = false); siki.visible = false;
   B = buildMotorbike(); scene.add(B.root); guru = B.root;
   guru.position.set(0, 0, -LEN + 14); heading = Math.PI; camPos.set(0, 4, -LEN + 5);
+  // soft contact blobs under wheels (lightweight circles — no EffectComposer)
+  B.wheelBlobF = makeGroundBlob(.4, .26); B.root.add(B.wheelBlobF);
+  B.wheelBlobR = makeGroundBlob(.44, .28); B.root.add(B.wheelBlobR);
   G.root.position.set(-1.8, 0, 3); G.root.rotation.y = Math.PI; fis.visible = true; fis.position.set(1.8, 0, 3); fis.rotation.y = Math.PI;
   document.querySelector('#hud').firstChild.textContent = '';
   buildObstacles();
@@ -608,12 +625,39 @@ function tick2(now) {
   const jp = keys.Space || jumpTouch; if (jp && !hopHeld && grounded) { vy = 6.5; grounded = false; } hopHeld = jp;
   vy -= GRAV * dt; gp.y += vy * dt; if (gp.y <= 0) { if (!grounded) B.bob.position.y = -.08; gp.y = 0; vy = 0; grounded = true; }
   if (knock.lengthSq() > .01) { gp.x = THREE.MathUtils.clamp(gp.x + knock.x * dt, -WALK_X, WALK_X); gp.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
-  // vzhled motorky
+  // vzhled motorky — PR9 feel (lean / vib / wheel blobs); Výkon softens motion
   guru.rotation.y = heading + Math.PI; wobble = Math.max(0, wobble - dt * 1.2);
-  B.lean.rotation.z += ((turn * .38 * Math.min(1, speed / 8)) + Math.sin(now / 50) * .25 * wobble - B.lean.rotation.z) * Math.min(1, dt * 6);
-  B.bob.position.y += (Math.sin(now / 45) * .012 * Math.min(1, speed / 10) - B.bob.position.y) * Math.min(1, dt * 8);
+  const feel = gfxMode === 'perf' ? .4 : 1;
+  const spdF = Math.min(1, speed / 10);
+  const idle = grounded && speed < 1.6;
+  // bank into turns (stronger with speed) + hit wobble
+  const leanT = turn * (.34 + .4 * spdF) * feel;
+  const hitWob = Math.sin(now / 48) * .3 * wobble;
+  B.lean.rotation.z += (leanT + hitWob - B.lean.rotation.z) * Math.min(1, dt * 7);
+  // pitch: nose-up on throttle, dive on brake
+  const pitchT = (thr ? -.045 * Math.max(spdF, .25) : brk ? .055 : 0) * feel;
+  B.lean.rotation.x += (pitchT - B.lean.rotation.x) * Math.min(1, dt * 5.5);
+  // idle chug + running exhaust pulse on bob (subtle)
+  const vibY = grounded
+    ? (idle
+        ? Math.sin(now / 26) * .016 * feel + Math.sin(now / 13) * .006 * feel
+        : Math.sin(now / 42) * .01 * spdF * feel + Math.sin(now / 19) * .005 * spdF * feel)
+    : 0;
+  const landSquash = B.bob.position.y < -.04 ? B.bob.position.y : 0;
+  const bobTargetY = landSquash !== 0 && Math.abs(landSquash) > Math.abs(vibY) ? landSquash * .7 : vibY;
+  B.bob.position.y += (bobTargetY - B.bob.position.y) * Math.min(1, dt * 10);
+  B.bob.rotation.z += ((idle ? Math.sin(now / 31) * .014 : Math.sin(now / 36) * .006 * spdF) * feel - B.bob.rotation.z) * Math.min(1, dt * 8);
+  // light counter-steer on bars (keep fork rake on .x)
+  B.steer.rotation.y += ((-turn * .2 * spdF * feel) - B.steer.rotation.y) * Math.min(1, dt * 8);
   B.front.spin.rotation.x += speed * dt / B.R; B.rear.spin.rotation.x += speed * dt / B.R;
-  B.rider.head.rotation.y = -turn * .25; B.rider.tail.rotation.y = Math.sin(now / 200) * .15; animateSiki(B.rider, { dt, now }, { bike: true, amp: .1 });
+  // rider leans with bike; head looks into turn
+  B.rider.body.rotation.z += ((-leanT * .4) - B.rider.body.rotation.z) * Math.min(1, dt * 6);
+  B.rider.head.rotation.y = -turn * .28;
+  B.rider.tail.rotation.y = Math.sin(now / 200) * .15;
+  animateSiki(B.rider, { dt, now }, { bike: true, amp: .1 + .06 * spdF, speed });
+  // soft blobs under wheels
+  syncBikeWheelBlob(B.wheelBlobF, B.front, B.root, !grounded);
+  syncBikeWheelBlob(B.wheelBlobR, B.rear, B.root, !grounded);
   // překážky
   if (invul <= 0 && gp.y < 1) for (const o of obs) { if (Math.abs(gp.x - o.x) < o.hw + .3 && Math.abs(gp.z - o.z) < o.hd + .8 && gp.y < o.h) { hitObs(o); break; } }
   updateBones(dt, now); updateBirds(dt, now);
@@ -626,7 +670,11 @@ function tick2(now) {
   camPos.lerp(back, 1 - Math.pow(.01, dt)); camera.position.copy(camPos); camera.lookAt(gp.x, gp.y + 1.5, gp.z + 3);
   camera.fov += (58 + speed * 1.1 - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix();
   sun.position.set(gp.x + 12, 25, gp.z + 8); sun.target.position.copy(gp);
-  if (eng) { const f = 45 + speed * 7; eng.o.frequency.value = f; eng.o2.frequency.value = f * .5; }
+  if (eng) {
+    const f = 42 + speed * 7.2 + (speed < 1.5 ? Math.sin(now / 40) * 3 : 0);
+    eng.o.frequency.value = f; eng.o2.frequency.value = f * .5;
+    eng.g.gain.value = .028 + Math.min(.025, speed * .0018);
+  }
   renderer.render(scene, camera);
   window.__obs = obs; window.__l2 = { x: gp.x, z: gp.z, speed, lives, done, obs: obs.length, raceT };
   requestAnimationFrame(tick2);
