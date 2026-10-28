@@ -37,47 +37,81 @@ function makeFurNoiseMap(size = 128) {
 }
 
 function makeMuzzleMap() {
-  const s = 128, c = document.createElement('canvas');
+  // Stronger white muzzle: soft rim darkening + directional fluff strokes
+  const s = 160, c = document.createElement('canvas');
   c.width = c.height = s;
   const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(s * .5, s * .55, 8, s * .5, s * .5, s * .55);
+  const g = ctx.createRadialGradient(s * .5, s * .52, 6, s * .5, s * .5, s * .58);
   g.addColorStop(0, '#ffffff');
-  g.addColorStop(.55, '#f4f1ea');
-  g.addColorStop(1, '#e0d8cc');
+  g.addColorStop(.35, '#faf7f1');
+  g.addColorStop(.7, '#ebe3d6');
+  g.addColorStop(1, '#cfc4b4');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, s, s);
-  for (let i = 0; i < 180; i++) {
-    const a = 200 + ((Math.random() * 40) | 0);
-    ctx.fillStyle = `rgb(${a},${a - 4},${a - 10})`;
+  // short white fluff strokes (radial-ish from center)
+  for (let i = 0; i < 520; i++) {
+    const x = Math.random() * s, y = Math.random() * s;
+    const dx = x - s * .5, dy = y - s * .5;
+    const ang = Math.atan2(dy, dx) + (Math.random() - .5) * .6;
+    const len = 3 + Math.random() * 9;
+    const a = 210 + ((Math.random() * 45) | 0);
+    ctx.strokeStyle = `rgba(${a},${a - 3},${a - 12},${.35 + Math.random() * .45})`;
+    ctx.lineWidth = .5 + Math.random() * 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+    ctx.stroke();
+  }
+  // soft speckles / pores
+  for (let i = 0; i < 280; i++) {
+    const v = 185 + ((Math.random() * 55) | 0);
+    ctx.fillStyle = `rgba(${v},${v - 4},${v - 12},${.4})`;
     ctx.fillRect((Math.random() * s) | 0, (Math.random() * s) | 0, 1 + (Math.random() * 2) | 0, 1);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1.2, 1.2);
+  tex.repeat.set(1.35, 1.35);
   tex.needsUpdate = true;
   return tex;
 }
 
 function makeCrownMap() {
-  const s = 128, c = document.createElement('canvas');
+  // Stronger dark crown: layered strokes + soft mottling (husky scalp under cap)
+  const s = 160, c = document.createElement('canvas');
   c.width = c.height = s;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#2a2c30';
+  const bg = ctx.createRadialGradient(s * .5, s * .4, 10, s * .5, s * .5, s * .65);
+  bg.addColorStop(0, '#3a3e46');
+  bg.addColorStop(.45, '#2a2d34');
+  bg.addColorStop(1, '#181a1e');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, s, s);
-  for (let i = 0; i < 700; i++) {
+  for (let i = 0; i < 1100; i++) {
     const x = Math.random() * s, y = Math.random() * s;
-    const len = 2 + Math.random() * 8;
-    const v = 30 + ((Math.random() * 50) | 0);
-    ctx.strokeStyle = `rgb(${v},${v + 2},${v + 4})`;
-    ctx.lineWidth = 0.7 + Math.random();
+    const len = 3 + Math.random() * 11;
+    const v = 22 + ((Math.random() * 55) | 0);
+    const lite = Math.random() > .72;
+    ctx.strokeStyle = lite
+      ? `rgba(${v + 40},${v + 42},${v + 48},${.45})`
+      : `rgb(${v},${v + 2},${v + 5})`;
+    ctx.lineWidth = .55 + Math.random() * 1.35;
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(x + len * .3, y + len);
+    ctx.lineTo(x + len * (.15 + Math.random() * .35), y + len);
     ctx.stroke();
+  }
+  // soft mottles
+  for (let i = 0; i < 40; i++) {
+    const x = Math.random() * s, y = Math.random() * s, r = 4 + Math.random() * 14;
+    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, 'rgba(70,74,82,.35)');
+    rg.addColorStop(1, 'rgba(20,22,26,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1.8, 1.8);
+  tex.repeat.set(2.1, 2.1);
   tex.needsUpdate = true;
   return tex;
 }
@@ -151,11 +185,11 @@ export function buildGuru() {
   });
   const mat = {
     fur: furMat(0xf2efe9, .98, .035),
-    furHead: furMat(0xf6f3ee, .99, .055),
-    furMuzzle: std(0xffffff, .97, { map: muzTex, roughnessMap: noise, bumpMap: noise, bumpScale: .045 }),
-    furGrey: furMat(0x9aa0a8, .97, .05),
-    furDark: furMat(0x3a3d44, .96, .06),
-    furCrown: std(0x2c2e34, .97, { map: crownTex, roughnessMap: crownTex, bumpMap: crownTex, bumpScale: .07 }),
+    furHead: furMat(0xf6f3ee, .99, .07),
+    furMuzzle: std(0xffffff, .96, { map: muzTex, roughnessMap: muzTex, bumpMap: muzTex, bumpScale: .08 }),
+    furGrey: furMat(0x9aa0a8, .97, .06),
+    furDark: furMat(0x3a3d44, .96, .07),
+    furCrown: std(0x2c2e34, .96, { map: crownTex, roughnessMap: crownTex, bumpMap: crownTex, bumpScale: .11 }),
     pink: std(0xf0b8b0, .9),
     shirt: std(0xf7f7f5, .88),
     jeans: std(0x2a4a86, .92),
@@ -258,10 +292,21 @@ export function buildGuru() {
     head.add(mesh(SH(.19, 28, 22), mat.furHead, [s * .29, -.04, .1], [.88, 1.0, .92]));
     head.add(mesh(SH(.13, 24, 18), mat.furMuzzle, [s * .24, -.16, .2], [.95, .75, .9]));
     head.add(mesh(SH(.09, 18, 14), mat.furHead, [s * .32, .02, -.02], [.7, .85, .75]));
+    // jemnější fluff clumps (jen hlava)
+    head.add(mesh(SH(.055, 12, 10), mat.furHead, [s * .36, -.08, .14], [.9, 1.1, .85]));
+    head.add(mesh(SH(.048, 12, 10), mat.furMuzzle, [s * .28, -.2, .28], [1.1, .8, 1]));
+    head.add(mesh(SH(.05, 12, 10), mat.furGrey, [s * .34, .08, .06], [.85, .9, .7]));
+    head.add(mesh(SH(.042, 10, 8), mat.furCrown, [s * .22, .2, -.12], [1, .7, .8]));
   });
   // brada + bílá morda
   head.add(mesh(SH(.3, 32, 24), mat.furMuzzle, [0, -.2, .12], [1.28, .82, 1.12]));
   head.add(mesh(SH(.23, 32, 24), mat.furMuzzle, [0, -.12, .38], [1.08, .85, 1.42]));
+  // chin / forehead fluff clumps
+  head.add(mesh(SH(.07, 14, 12), mat.furMuzzle, [0, -.28, .22], [1.2, .7, 1]));
+  head.add(mesh(SH(.055, 12, 10), mat.furMuzzle, [.08, -.24, .3], [.9, .75, .95]));
+  head.add(mesh(SH(.055, 12, 10), mat.furMuzzle, [-.08, -.24, .3], [.9, .75, .95]));
+  head.add(mesh(SH(.06, 12, 10), mat.furCrown, [0, .22, -.08], [1.1, .65, .9]));
+  head.add(mesh(SH(.045, 10, 8), mat.furHead, [0, .12, .28], [.8, .6, .7]));
   // mostík / šedý přechod kolem očí
   head.add(mesh(SH(.14, 24, 16), mat.furGrey, [0, .08, .34], [.7, .55, .5], [-.2, 0, 0]));
   [-1, 1].forEach(s => head.add(mesh(SH(.1, 18, 14), mat.furGrey, [s * .14, .1, .34], [.55, .7, .4])));
