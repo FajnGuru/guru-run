@@ -1,8 +1,9 @@
-// Procedurální model SIKI (klokan) – PR5: pracovní opasek (pouches, wrench, pliers)
+// Procedurální model SIKI (klokan) – PR10 polish: blink, ear twitch, distance logos
 // API: buildSiki() → { root, body, head, arms, legs, tail, belt }; animateSiki(g, t, opts?)
 // DŮLEŽITÉ: legs[i].children[2] = foot group (motorbike pose).
-// Tail.segs = cascade segments; bike pose sets tail.rotation.x ≈ .25 (over seat).
+// Tail.segs = cascade segments; bike pose lays tail over seat.
 // belt = leather tool belt group; animateSiki jiggles it lightly when bike/speed.
+// head.eyes[].lid + head.ears[] driven by animateSiki (blink / twitch).
 import * as THREE from 'three';
 
 function textTex(text, w, h, font, color = '#fff', opts = {}) {
@@ -224,11 +225,11 @@ export function buildSiki() {
   [-1, 1].forEach(s => {
     body.add(mesh(SH(.12, 12, 10), mat.redDeep, [s * .32, 2.12, .05], [.9, .7, 1.1]));
   });
-  // bold white SIKI across upper chest (above overall bib)
-  const sikiTex = textTex('SIKI', 320, 110, 'bold 92px Arial, sans-serif', '#ffffff', { stroke: '#1a2040', lineWidth: 10 });
-  body.add(decal(sikiTex, .42, .15, [0, 1.95, .455]));
+  // bold white SIKI across upper chest (distance-readable)
+  const sikiTex = textTex('SIKI', 384, 128, 'bold 108px Arial, sans-serif', '#ffffff', { stroke: '#121830', lineWidth: 14 });
+  body.add(decal(sikiTex, .48, .17, [0, 1.95, .46]));
   // tiny navy underline under SIKI for athletic look
-  body.add(mesh(new THREE.BoxGeometry(.34, .012, .01), mat.navy, [0, 1.875, .46]));
+  body.add(mesh(new THREE.BoxGeometry(.4, .014, .01), mat.navy, [0, 1.86, .465]));
   // montérky v2 – džínové lacláče (bib, brown straps, X back, pockets, tail cutout)
   // front bib (sits below jersey SIKI)
   body.add(mesh(new THREE.BoxGeometry(.52, .52, .07), mat.denim, [0, 1.58, .44]));
@@ -239,8 +240,8 @@ export function buildSiki() {
   body.add(mesh(new THREE.BoxGeometry(.28, .2, .04), mat.denimLight, [0, 1.6, .485]));
   body.add(mesh(new THREE.BoxGeometry(.26, .015, .01), mat.stitch, [0, 1.69, .51]));
   // small SIKI on bib pocket (bike ref) — jersey keeps the large chest mark
-  const bibSiki = textTex('SIKI', 256, 96, 'bold 72px Arial, sans-serif', '#f4f6fa', { stroke: '#2a3a55', lineWidth: 8 });
-  body.add(decal(bibSiki, .24, .09, [0, 1.6, .51]));
+  const bibSiki = textTex('SIKI', 288, 100, 'bold 84px Arial, sans-serif', '#ffffff', { stroke: '#1a2a44', lineWidth: 10 });
+  body.add(decal(bibSiki, .28, .1, [0, 1.6, .515]));
   // brass buttons at bib top corners
   [-1, 1].forEach(s => {
     body.add(mesh(new THREE.CylinderGeometry(.035, .035, .02, 10), mat.brass, [s * .2, 1.8, .485], null, [Math.PI / 2, 0, 0]));
@@ -390,7 +391,7 @@ export function buildSiki() {
   });
 
   // paže – bílé rukávy + pruhy (bílá / navy / bílá) + 69 na ramenou
-  const num69 = textTex('69', 160, 120, 'bold 96px Arial, sans-serif', '#ffffff', { stroke: '#1a2040', lineWidth: 9 });
+  const num69 = textTex('69', 192, 140, 'bold 112px Arial, sans-serif', '#ffffff', { stroke: '#121830', lineWidth: 12 });
   const arms = [-1, 1].map(s => {
     const g = new THREE.Group(); g.position.set(s * .4, 2.08, 0); g.rotation.z = s * .14; body.add(g);
     // shoulder pad (white → red blend at deltoid)
@@ -409,10 +410,10 @@ export function buildSiki() {
     // cuff rim
     g.add(mesh(new THREE.CylinderGeometry(.14, .138, .05, 14), mat.whiteSoft, [0, -.655, 0]));
     // bold 69 on outer upper arm / shoulder
-    const n = decal(num69, .22, .17, [s * .155, -.15, 0], [0, s * Math.PI / 2, 0]);
+    const n = decal(num69, .26, .2, [s * .16, -.15, 0], [0, s * Math.PI / 2, 0]);
     g.add(n);
     // soft side read of 69 (slightly forward so camera catches it)
-    const n2 = decal(num69, .18, .14, [s * .12, -.15, .1], [0, s * Math.PI / 3, 0]);
+    const n2 = decal(num69, .22, .17, [s * .13, -.15, .11], [0, s * Math.PI / 3, 0]);
     n2.material.opacity = .85; n2.material.transparent = true;
     g.add(n2);
     // fur hand
@@ -580,7 +581,7 @@ export function buildSiki() {
  *  Safe with game3d/motorbike that also set tail.rotation.y / .x — we blend segs only
  *  unless opts.driveRoot is true. */
 export function animateSiki(g, t, opts = {}) {
-  if (!g?.tail && !g?.belt) return;
+  if (!g) return;
   const dt = t.dt ?? 0.016;
   const now = t.now ?? 0;
   const lerp = (cur, tgt, rate) => cur + (tgt - cur) * Math.min(1, dt * rate);
@@ -588,6 +589,7 @@ export function animateSiki(g, t, opts = {}) {
   const sp = opts.bike ? 200 : 320;
   const wave = Math.sin(now / sp);
   const wave2 = Math.sin(now / (sp * 1.35) + .7);
+  const spd = opts.speed ?? (opts.bike ? 10 : 0);
   if (g.tail && opts.driveRoot) {
     const baseX = opts.bike ? .25 : 0;
     g.tail.rotation.y = lerp(g.tail.rotation.y, wave * amp, 7);
@@ -607,7 +609,6 @@ export function animateSiki(g, t, opts = {}) {
   }
   // cheap tool-belt jiggle (rider / motion) — uses opts.speed when passed
   if (g.belt) {
-    const spd = opts.speed ?? (opts.bike ? 10 : 0);
     const j = Math.min(1, Math.abs(spd) / 14) * (opts.amp ?? .1);
     const wob = Math.sin(now / 48);
     const wob2 = Math.sin(now / 37 + 1.1);
@@ -615,5 +616,36 @@ export function animateSiki(g, t, opts = {}) {
     g.belt.position.y = lerp(g.belt.position.y, baseY + wob * j * .018, 10);
     g.belt.rotation.z = lerp(g.belt.rotation.z, wob2 * j * .06, 9);
     g.belt.rotation.x = lerp(g.belt.rotation.x, wob * j * .03, 9);
+  }
+  // ear twitch (standing + soft on bike)
+  if (g.head?.ears?.length) {
+    const idleAmt = opts.bike ? .35 : Math.max(0, 1 - Math.min(1, Math.abs(spd) / 8));
+    g.head.ears.forEach((ear, i) => {
+      const b = ear.userData.base || (ear.userData.base = {
+        x: ear.rotation.x, y: ear.rotation.y, z: ear.rotation.z,
+      });
+      const side = i ? 1 : -1;
+      const soft = Math.sin(now / 920 + i * 1.6) * .045 * (idleAmt + .15);
+      const spike = Math.pow(Math.max(0, Math.sin(now / 540 + i * 2.1)), 14) * (.16 * idleAmt + .03);
+      ear.rotation.z = lerp(ear.rotation.z, b.z + soft * side + spike * side, 10);
+      ear.rotation.x = lerp(ear.rotation.x, b.x + soft * .4 - spike * .1, 10);
+      ear.rotation.y = lerp(ear.rotation.y, b.y + Math.sin(now / 1100 + i) * .03 * idleAmt, 8);
+    });
+  }
+  // blink via head.eyes[].lid
+  if (g.head?.eyes?.length) {
+    const off = g._blinkOff || 0;
+    const cycle = ((now / 1000) + off) % 3.8;
+    let blinkAmt = 0;
+    if (cycle < .11) blinkAmt = Math.sin((cycle / .11) * Math.PI);
+    else if (cycle > .2 && cycle < .3) blinkAmt = Math.sin(((cycle - .2) / .1) * Math.PI) * .8;
+    g.head.eyes.forEach(eye => {
+      if (!eye.lid) return;
+      const lid = eye.lid;
+      const baseY = lid.userData.baseY ?? .05;
+      lid.scale.y = lerp(lid.scale.y, .18 + blinkAmt * 1.55, 22);
+      lid.position.y = lerp(lid.position.y, baseY - blinkAmt * .045, 22);
+      eye.scale.y = lerp(eye.scale.y, 1 - blinkAmt * .32, 20);
+    });
   }
 }

@@ -103,21 +103,22 @@ const arch = new THREE.Mesh(new THREE.BoxGeometry(7, 9, 8.2), M(0x111111)); arch
 [[-7, 1], [7, 1]].forEach(([x]) => { const sp = new THREE.Mesh(new THREE.ConeGeometry(1, 6, 4), M(0x2b2b2b)); sp.position.set(x, 25, 3); gate.add(sp); });
 gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 
-// Per-character rim/fill (no EffectComposer) — follows each root; disabled in Výkon
-function attachCharLights(root, { fillI = .42, rimI = .55 } = {}) {
-  const fill = new THREE.PointLight(0xffe6cc, fillI, 7, 2);
-  fill.position.set(.55, 1.65, 1.35);
+// Per-character rim/fill (no EffectComposer) — G/F/K/bike; disabled in Výkon
+function attachCharLights(root, { fillI = .42, rimI = .55, fillPos, rimPos, dist } = {}) {
+  const fd = dist ?? 7, rd = dist != null ? dist * .85 : 6;
+  const fill = new THREE.PointLight(0xffe6cc, fillI, fd, 2);
+  fill.position.set(...(fillPos || [.55, 1.65, 1.35]));
   fill.castShadow = false;
   root.add(fill);
-  const rim = new THREE.PointLight(0xa8c4ff, rimI, 6, 2);
-  rim.position.set(-1.05, 1.95, -1.25);
+  const rim = new THREE.PointLight(0xa8c4ff, rimI, rd, 2);
+  rim.position.set(...(rimPos || [-1.05, 1.95, -1.25]));
   rim.castShadow = false;
   root.add(rim);
   return { fill, rim, fillI, rimI };
 }
 function syncCharLights() {
   const on = gfxMode !== 'perf';
-  for (const cl of [G?.charLights, F?.charLights]) {
+  for (const cl of [G?.charLights, F?.charLights, K?.charLights, B?.charLights]) {
     if (!cl) continue;
     cl.fill.intensity = on ? cl.fillI : 0;
     cl.rim.intensity = on ? cl.rimI : 0;
@@ -181,6 +182,8 @@ addEventListener('keydown', () => { if (cut) { cutSkip = true; sikiTap(); } });
 addEventListener('pointerdown', () => { if (cut) { cutSkip = true; sikiTap(); } });
 // --- SIKI u Prašné brány ---
 const K = buildSiki(); const siki = K.root; siki.scale.setScalar(1.15); siki.position.set(0, 0, -LEN + 4); scene.add(siki);
+K.charLights = attachCharLights(siki, { fillI: .4, rimI: .52 });
+K._blinkOff = 0.95;
 let sState = LEVEL === 2 ? 'npc' : 'idle', sT = 0, sLine = -1, sLineT = 0, sFromZ = 0, sToZ = 0;
 const sikiLines = () => ['Ahoj Guru! Já jsem SIKI. 🦘', 'Doběhl jsi až k Prašné bráně – klobouk dolů!', `Sesbíral jsi ${bones} ${bones === 1 ? 'kostičku' : bones >= 2 && bones <= 4 ? 'kostičky' : 'kostiček'}. Příště tě čeká další level!`];
 function say(t) { try { if (!('speechSynthesis' in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t.replace(/[🦘]/g, '')); u.lang = 'cs-CZ'; u.rate = 1.0; speechSynthesis.speak(u); } catch (e) {} }
@@ -559,6 +562,13 @@ function startLevel2() {
   // soft contact blobs under wheels (lightweight circles — no EffectComposer)
   B.wheelBlobF = makeGroundBlob(.4, .26); B.root.add(B.wheelBlobF);
   B.wheelBlobR = makeGroundBlob(.44, .28); B.root.add(B.wheelBlobR);
+  // rim/fill on bike+rider (Grafika); Výkon turns them off via syncCharLights
+  B.charLights = attachCharLights(B.root, {
+    fillI: .48, rimI: .58, dist: 8,
+    fillPos: [.7, 1.55, 1.4], rimPos: [-1.1, 1.85, -1.3],
+  });
+  if (B.rider) B.rider._blinkOff = 1.4;
+  syncCharLights();
   G.root.position.set(-1.8, 0, 3); G.root.rotation.y = Math.PI; fis.visible = true; fis.position.set(1.8, 0, 3); fis.rotation.y = Math.PI;
   document.querySelector('#hud').firstChild.textContent = '';
   buildObstacles();
