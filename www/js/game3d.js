@@ -183,7 +183,7 @@ function endScreen(title, win) { done = true; document.getElementById('ovT').tex
 let raceT = 0; const fmtT = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor(t * 10 % 10)}`;
 
 // --- smyčka ---
-let heading = 0, speed = 0, phase = 0, last = performance.now(), vy = 0, grounded = true, coyote = 0, buffer = 0, jumpHeld = false, falling = false, done = false, checkpoint = 0, squash = 0;
+let heading = 0, speed = 0, phase = 0, last = performance.now(), vy = 0, grounded = true, coyote = 0, buffer = 0, jumpHeld = false, falling = false, done = false, checkpoint = 0, squash = 0, idleTurn = 0;
 const GRAV = 26, JUMP_V = 9.5;
 const holeAt = z => HOLES.some(h => z < h.z0 && z > h.z1);
 const camPos = new THREE.Vector3(0, 4, 8), tmp = new THREE.Vector3();
@@ -299,7 +299,14 @@ function tick(now) {
   heading += turn * 2.4 * dt;
   const target = fwd * (fwd > 0 ? (running ? 9 : 4) : 2.5);
   speed += (target - speed) * Math.min(1, dt * 8);
-  guru.rotation.y = heading + Math.PI;
+  const lookCam = grounded && !falling && Math.abs(speed) < .35 && Math.abs(fwd) < .15;
+  idleTurn += ((lookCam ? 1 : 0) - idleTurn) * Math.min(1, dt * (lookCam ? 2.4 : 4.5));
+  const travelYaw = heading + Math.PI;
+  const camYaw = heading; // kamera je za zády ve směru heading
+  let dYaw = (camYaw - travelYaw) % (Math.PI * 2);
+  if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+  if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+  guru.rotation.y = travelYaw + dYaw * idleTurn;
   guru.position.x += -Math.sin(heading) * speed * dt; guru.position.z += -Math.cos(heading) * speed * dt;
   guru.position.x = THREE.MathUtils.clamp(guru.position.x, -HALF_W - 3.2, HALF_W + 3.2);
   guru.position.z = THREE.MathUtils.clamp(guru.position.z, -LEN + 2, 8);
@@ -316,7 +323,7 @@ function tick(now) {
   if (falling) { guru.position.z = THREE.MathUtils.clamp(guru.position.z, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z1 + .4 ?? -1e9, HOLES.find(h => guru.position.z < h.z0 + .5 && guru.position.z > h.z1 - .5)?.z0 - .4 ?? 1e9); }
   if (guru.position.y < -6 && !done) {
     lives--; elL.textContent = '❤ ' + Math.max(0, lives); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([80, 40, 120]);
-    if (lives <= 0) endScreen('Konec hry'); else { showToast('-1 život'); guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; camPos.set(0, 4, checkpoint + 8); }
+    if (lives <= 0) endScreen('Konec hry'); else { showToast('-1 život'); guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; idleTurn = 0; camPos.set(0, 4, checkpoint + 8); }
   }
   for (const c of CHECKS) if (guru.position.z < c - 1 && c < checkpoint && grounded) { checkpoint = c; showToast('Checkpoint ✔'); }
   flags.forEach((f, i) => f.rotation.y = Math.sin(now / 300 + i) * .3);
@@ -326,7 +333,7 @@ function tick(now) {
   updateSiki(dt, now);
   if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
-  animateGuru(G, { dt, now, lookCam: grounded && !falling && Math.abs(speed) < .35 && Math.abs(fwd) < .15 }, grounded ? speed : 0, running);
+  animateGuru(G, { dt, now, lookCam }, grounded ? speed : 0, running);
   if (!grounded) { const up = vy > 0; G.arms.forEach((a, i) => a.rotation.x = up ? -2.6 : -1.6); G.legs[0].rotation.x = up ? -.9 : -.3; G.legs[1].rotation.x = up ? .5 : .2; G.body.rotation.x = up ? -.1 : .15; }
   squash *= Math.pow(.0005, dt); const q = squash > 0 ? squash * .25 : squash * .18;
   guru.scale.set(1 + q, 1 - q * 1.4, 1 + q);

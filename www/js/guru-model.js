@@ -1,6 +1,6 @@
 // Procedurální model Guru (husky) — first-pass look upgrade (méně plastu, čitelnější oči/brýle)
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
-// t.lookCam = true → idle look-back ke kameře (Crash); Fiškule/cutscény nechávají false/undefined
+// t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
 import * as THREE from 'three';
 
@@ -217,20 +217,17 @@ export function animateGuru(g, t, speed, running) {
   g.body.position.y = Math.abs(Math.cos(p)) * .07 * k;
   g.body.rotation.x += ((running && a > 5 ? .16 : 0) - g.body.rotation.x) * Math.min(1, dt * 6);
   g.body.rotation.y = Math.sin(p) * .06 * k;
-  // Crash-style idle: když lookCam (stojí na zemi), otočí hlavu přes rameno ke kameře vzadu
+  // lookCam: tělo otáčí game3d (~180°); tady jen jemný glance, ať se netočí dvojitě
   const wantLook = !!t.lookCam;
-  g._lookT = Math.min(1, Math.max(0, (g._lookT || 0) + (wantLook ? dt * 1.8 : -dt * 3.2)));
+  g._lookT = Math.min(1, Math.max(0, (g._lookT || 0) + (wantLook ? dt * 2.2 : -dt * 3.5)));
   const look = g._lookT;
-  const walkY = a < .5 && !wantLook ? Math.sin(t.now / 900) * .15 : 0;
-  const lookY = 1.35 + Math.sin(t.now / 700) * .06; // přes levé rameno k meru vzadu
-  const lookZ = .12;
-  const lookX = -.08;
-  const faceY = walkY;
-  const faceZ = Math.sin(p) * .04 * k;
-  const faceX = 0;
+  const walkY = a < .5 && look < .2 ? Math.sin(t.now / 900) * .12 : 0;
+  const tgtY = walkY + look * (.18 + Math.sin(t.now / 800) * .04);
+  const tgtZ = Math.sin(p) * .04 * k * (1 - look) + look * .06;
+  const tgtX = look * -.05;
   const lerp = (cur, tgt, rate) => cur + (tgt - cur) * Math.min(1, dt * rate);
-  g.head.rotation.y = lerp(g.head.rotation.y, faceY + (lookY - faceY) * look, 8);
-  g.head.rotation.z = lerp(g.head.rotation.z, faceZ + (lookZ - faceZ) * look, 8);
-  g.head.rotation.x = lerp(g.head.rotation.x, faceX + (lookX - faceX) * look, 8);
+  g.head.rotation.y = lerp(g.head.rotation.y, tgtY, 10);
+  g.head.rotation.z = lerp(g.head.rotation.z, tgtZ, 10);
+  g.head.rotation.x = lerp(g.head.rotation.x, tgtX, 10);
   g.tail.rotation.y = Math.sin(t.now / (a > 1 ? 90 : 160)) * .55; g.tail.rotation.x = -.2;
 }
