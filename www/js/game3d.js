@@ -19,7 +19,7 @@ stage.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9cc9e8); scene.fog = new THREE.Fog(0x9cc9e8, 35, 150);
 const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 160);
-scene.add(new THREE.HemisphereLight(0xdfefff, 0x6b5a48, 1.2));
+const hemi = new THREE.HemisphereLight(0xdfefff, 0x6b5a48, 1.2); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
 sun.position.set(12, 25, 8); sun.castShadow = true;
 Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 80 });
@@ -63,11 +63,12 @@ for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { cx.fillStyle = `hsl(22
 const cob = new THREE.CanvasTexture(cv); cob.wrapS = cob.wrapT = THREE.RepeatWrapping; cob.repeat.set(5, 80); cob.colorSpace = THREE.SRGBColorSpace;
 const streetMat = new THREE.MeshStandardMaterial({ map: cob, roughness: .95 }), walkMat = M(0x9a948a);
 cob.repeat.set(5, 1);
+const cityGround = [];
 const segs = []; { let z = 12; for (const h of HOLES) { segs.push([z, h.z0]); z = h.z1; } segs.push([z, -LEN - 12]); }
 for (const [a, b] of segs) {
   const L = a - b, g = new THREE.PlaneGeometry(HALF_W * 2, L); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, uv.getY(k) * L / 2);
-  const st = new THREE.Mesh(g, streetMat); st.rotation.x = -Math.PI / 2; st.position.z = (a + b) / 2; st.receiveShadow = true; scene.add(st);
-  [-1, 1].forEach(sg => { const w = new THREE.Mesh(new THREE.PlaneGeometry(4, L), walkMat); w.rotation.x = -Math.PI / 2; w.position.set(sg * (HALF_W + 2), .02, (a + b) / 2); w.receiveShadow = true; scene.add(w); });
+  const st = new THREE.Mesh(g, streetMat); st.rotation.x = -Math.PI / 2; st.position.z = (a + b) / 2; st.receiveShadow = true; scene.add(st); cityGround.push(st);
+  [-1, 1].forEach(sg => { const w = new THREE.Mesh(new THREE.PlaneGeometry(4, L), walkMat); w.rotation.x = -Math.PI / 2; w.position.set(sg * (HALF_W + 2), .02, (a + b) / 2); w.receiveShadow = true; scene.add(w); cityGround.push(w); });
 }
 // jámy: vnitřek (BackSide) + krajové kameny
 const pitMat = new THREE.MeshStandardMaterial({ color: 0x15120f, side: THREE.BackSide, roughness: 1 }), edgeMat = M(0x8c8378);
@@ -691,31 +692,89 @@ function tick2(now) {
   requestAnimationFrame(tick2);
 }
 
-// ================= LEVEL 3: Les (stub entry) =================
+// ================= LEVEL 3: Les base (ground / path / light) =================
+function makeForestTex(kind) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  if (kind === 'grass') {
+    x.fillStyle = '#3d6b32'; x.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 900; i++) {
+      const g = 38 + Math.random() * 28;
+      x.fillStyle = `hsl(${95 + Math.random() * 35}, ${35 + Math.random() * 30}%, ${g}%)`;
+      x.fillRect((Math.random() * 256) | 0, (Math.random() * 256) | 0, 2 + (Math.random() * 4) | 0, 2 + (Math.random() * 3) | 0);
+    }
+  } else {
+    x.fillStyle = '#6b4e32'; x.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 700; i++) {
+      const l = 28 + Math.random() * 22;
+      x.fillStyle = `hsl(${28 + Math.random() * 18}, ${28 + Math.random() * 25}%, ${l}%)`;
+      x.beginPath(); x.ellipse(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 6, 1 + Math.random() * 3, Math.random() * Math.PI, 0, Math.PI * 2); x.fill();
+    }
+    // soft path edge darkening
+    const grd = x.createLinearGradient(0, 0, 256, 0);
+    grd.addColorStop(0, 'rgba(40,28,16,.35)'); grd.addColorStop(.12, 'rgba(40,28,16,0)');
+    grd.addColorStop(.88, 'rgba(40,28,16,0)'); grd.addColorStop(1, 'rgba(40,28,16,.35)');
+    x.fillStyle = grd; x.fillRect(0, 0, 256, 256);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 function startLevel3() {
-  // green fog placeholder — real forest comes in later PRs
-  scene.background = new THREE.Color(0x6a9a6e);
-  scene.fog = new THREE.Fog(0x6a9a6e, 22, 95);
+  // forest sky + fog (not city blue)
+  const fogCol = 0x7a9a72;
+  scene.background = new THREE.Color(fogCol);
+  scene.fog = new THREE.Fog(fogCol, 18, 78);
+  // canopy-filtered hemisphere + softer sun
+  hemi.color.setHex(0xc8e0b8); hemi.groundColor.setHex(0x3a4a28); hemi.intensity = 1.05;
+  sun.color.setHex(0xffe2b0); sun.intensity = 1.55;
+  sun.position.set(8, 22, 4);
+  // hide city street / houses / gate
+  cityGround.forEach(m => { m.visible = false; });
   hm.visible = false; rm.visible = false; winM.visible = false;
   gate.visible = false; siki.visible = false;
   flags.forEach(f => { if (f.parent) f.parent.visible = false; });
-  // soft grass plane over street cobbles
+  // grass floor
+  const grassMap = makeForestTex('grass'); grassMap.repeat.set(14, 90);
   const grass = new THREE.Mesh(
-    new THREE.PlaneGeometry(36, LEN + 48),
-    new THREE.MeshStandardMaterial({ color: 0x4f7d3a, roughness: .96 }),
+    new THREE.PlaneGeometry(52, LEN + 60),
+    new THREE.MeshStandardMaterial({ map: grassMap, color: 0xb8d4a0, roughness: .97 }),
   );
   grass.rotation.x = -Math.PI / 2;
-  grass.position.set(0, .05, -LEN / 2);
+  grass.position.set(0, .02, -LEN / 2);
   grass.receiveShadow = true;
   scene.add(grass);
+  // dirt path down the middle
+  const dirtMap = makeForestTex('dirt'); dirtMap.repeat.set(2.2, 70);
+  const pathW = HALF_W * 2 - .4;
+  const path = new THREE.Mesh(
+    new THREE.PlaneGeometry(pathW, LEN + 40),
+    new THREE.MeshStandardMaterial({ map: dirtMap, color: 0xc4a07a, roughness: .94 }),
+  );
+  path.rotation.x = -Math.PI / 2;
+  path.position.set(0, .04, -LEN / 2);
+  path.receiveShadow = true;
+  scene.add(path);
+  // soft path berms (slightly raised grass strips)
+  [-1, 1].forEach(sg => {
+    const berm = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.4, LEN + 40),
+      new THREE.MeshStandardMaterial({ color: 0x456f35, roughness: .98 }),
+    );
+    berm.rotation.x = -Math.PI / 2;
+    berm.position.set(sg * (pathW / 2 + 1.1), .035, -LEN / 2);
+    berm.receiveShadow = true;
+    scene.add(berm);
+  });
   // Guru walk controls (reuse L1 tick); Fiškule ahead as placeholder
   guru.position.set(0, 0, 0);
   heading = 0; speed = 0; camPos.set(0, 4, 8);
   fis.visible = true;
   fis.position.set(.9, 0, -16);
-  fis.rotation.y = Math.PI; // face deeper into the forest (-Z)
-  showToast('Level 3: Les (stub) 🌲');
-  window.__l3 = { stub: true, level: 3 };
+  fis.rotation.y = Math.PI;
+  showToast('Level 3: Les 🌲');
+  window.__l3 = { base: true, level: 3, pathW };
   requestAnimationFrame(tick);
 }
 if (LEVEL === 2) startLevel2();
