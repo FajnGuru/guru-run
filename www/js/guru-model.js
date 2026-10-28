@@ -765,6 +765,13 @@ export function animateGuru(g, t, speed, running) {
       ear.rotation.z = lerp(ear.rotation.z, b.z + soft * side + spike * side, 10);
       ear.rotation.x = lerp(ear.rotation.x, b.x + soft * .45 - spike * .12, 10);
       ear.rotation.y = lerp(ear.rotation.y, b.y + Math.sin(t.now / 1180 + i) * .025 * idleAmt, 8);
+      // optional tip flutter (Fiškule long ears)
+      if (ear.tip) {
+        const tbz = ear.tip.userData.baseZ ?? ear.tip.rotation.z;
+        const tbx = ear.tip.userData.baseX ?? ear.tip.rotation.x;
+        ear.tip.rotation.z = lerp(ear.tip.rotation.z, tbz + soft * side * .6 + spike * side * .4, 9);
+        ear.tip.rotation.x = lerp(ear.tip.rotation.x, tbx + soft * .3 - spike * .1, 9);
+      }
     });
   }
 }
