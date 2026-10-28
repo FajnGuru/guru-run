@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { buildGuru, animateGuru } from './guru-model.js';
 import { buildFiskule } from './fiskule-model.js';
 import { buildBird, flap } from './bird-model.js';
-import { buildSiki } from './siki-model.js';
+import { buildSiki, animateSiki } from './siki-model.js';
 import { buildMotorbike } from './motorbike-model.js';
 const LEVEL = new URLSearchParams(location.search).get('level') === '2' ? 2 : 1;
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
@@ -178,7 +178,7 @@ function updateSiki(dt, now) {
   if (sState === 'idle') {
     if (Math.abs(gp.z - siki.position.z) > 60) return;
     siki.position.y = Math.max(0, Math.sin(now / 260)) * .18 * (Math.sin(now / 2300) > .3 ? 1 : 0);
-    K.head.rotation.y = Math.sin(now / 1400) * .5; K.tail.rotation.y = Math.sin(now / 700) * .25;
+    K.head.rotation.y = Math.sin(now / 1400) * .5; K.tail.rotation.y = Math.sin(now / 700) * .25; animateSiki(K, { dt, now });
     if (gp.z < siki.position.z + 15 && !done) { sState = 'cut'; cut = true; cutSkip = false; sT = 0; sFromZ = siki.position.z; sToZ = gp.z - 4.5; birds.forEach(b => { if (b.state !== 'off') { b.state = 'circle'; b.mark.visible = false; } }); }
     return;
   }
@@ -190,7 +190,7 @@ function updateSiki(dt, now) {
   else if (sT < hopDur + .8) { siki.position.y = Math.abs(Math.sin((sT - hopDur) / .8 * Math.PI)) * 2.2; if (sLine < 0 && sT > hopDur + .4) showLine(0, false); } // velký skok radosti
   else siki.position.y = 0;
   siki.rotation.y = Math.atan2(gp.x - siki.position.x, gp.z - siki.position.z);
-  K.tail.rotation.y = Math.sin(now / 300) * .3; K.head.rotation.y = Math.sin(now / 500) * .12;
+  K.tail.rotation.y = Math.sin(now / 300) * .3; K.head.rotation.y = Math.sin(now / 500) * .12; animateSiki(K, { dt, now });
   K.arms[1].rotation.set(0, 0, sLine >= 0 ? 2.5 + Math.sin(now / 120) * .3 : .14);
   guru.rotation.y = Math.atan2(siki.position.x - gp.x, siki.position.z - gp.z); animateGuru(G, { dt, now }, 0, false);
   const camT = tmp.set(gp.x + 4.2, 2.4, gp.z + 5.5); camPos.lerp(camT, 1 - Math.pow(.05, dt)); camera.position.copy(camPos);
@@ -613,7 +613,7 @@ function tick2(now) {
   B.lean.rotation.z += ((turn * .38 * Math.min(1, speed / 8)) + Math.sin(now / 50) * .25 * wobble - B.lean.rotation.z) * Math.min(1, dt * 6);
   B.bob.position.y += (Math.sin(now / 45) * .012 * Math.min(1, speed / 10) - B.bob.position.y) * Math.min(1, dt * 8);
   B.front.spin.rotation.x += speed * dt / B.R; B.rear.spin.rotation.x += speed * dt / B.R;
-  B.rider.head.rotation.y = -turn * .25; B.rider.tail.rotation.y = Math.sin(now / 200) * .15;
+  B.rider.head.rotation.y = -turn * .25; B.rider.tail.rotation.y = Math.sin(now / 200) * .15; animateSiki(B.rider, { dt, now }, { bike: true, amp: .1 });
   // překážky
   if (invul <= 0 && gp.y < 1) for (const o of obs) { if (Math.abs(gp.x - o.x) < o.hw + .3 && Math.abs(gp.z - o.z) < o.hd + .8 && gp.y < o.h) { hitObs(o); break; } }
   updateBones(dt, now); updateBirds(dt, now);
