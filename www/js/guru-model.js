@@ -1,4 +1,4 @@
-// Procedurální model Guru (husky) — PR8: shared animateGuru scarf sway hook
+// Procedurální model Guru (husky) — PR10 polish: blink lids + stronger idle breath
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
@@ -540,11 +540,13 @@ export function buildGuru() {
     brow.add(mesh(new THREE.CapsuleGeometry(.016, .055, 4, 8), mat.brow, [-.055, -.012, 0], null, [0, 0, .55]));
     brow.add(mesh(new THREE.CapsuleGeometry(.018, .07, 4, 8), mat.brow, [0, .01, .005], [1.05, 1, 1], [0, 0, 0]));
     brow.add(mesh(new THREE.CapsuleGeometry(.015, .05, 4, 8), mat.brow, [.052, -.008, 0], null, [0, 0, -.5]));
-    // oči — socket + rim + sclera + deep iris + limbal ring + pupil + dual HL
+    // oči — socket + rim + sclera + deep iris + limbal ring + pupil + dual HL + blink lid
     const e = new THREE.Group();
     e.position.set(s * .15, .075, .39);
     e.rotation.y = s * .26;
     head.add(e);
+    head.eyes = head.eyes || [];
+    head.eyes.push(e);
     e.add(mesh(SH(.095, 18, 14), mat.eyeSocket, [0, -.008, -.02], [1.45, 1.35, .7]));
     e.add(mesh(SH(.078, 18, 14), mat.eyeRim, [0, 0, -.005], [1.38, 1.32, .52]));
     e.add(mesh(SH(.132, 32, 24), mat.eyeW, [0, 0, 0], [1.16, 1.2, .72]));
@@ -556,6 +558,12 @@ export function buildGuru() {
     e.add(mesh(SH(.026, 10, 8), mat.hl, [s * -.03 + .008, .036, .1]));
     e.add(mesh(SH(.012, 8, 6), mat.hlSoft, [s * .022, -.016, .098]));
     e.add(mesh(SH(.008, 6, 6), mat.hl, [s * -.018, -.02, .102]));
+    // soft upper lid (scales shut in animateGuru blink)
+    const lid = mesh(SH(.12, 12, 8), mat.eyeSocket, [0, .055, .02], [1.2, .35, .7]);
+    lid.scale.y = .18;
+    lid.userData.baseY = .055;
+    e.add(lid);
+    e.lid = lid;
     // šedé boční marky
     head.add(mesh(SH(.2, 24, 18), mat.furGrey, [s * .34, .1, -.1], [.48, 1.05, 1]));
     head.add(mesh(SH(.1, 16, 12), mat.furCrown, [s * .3, .22, -.08], [.55, .7, .6]));
@@ -675,21 +683,22 @@ export function animateGuru(g, t, speed, running) {
   g.arms[0].rotation.x = lerp(g.arms[0].rotation.x, -snLag * armAmp, 9);
   g.arms[1].rotation.x = lerp(g.arms[1].rotation.x, snLag * armAmp, 9);
 
-  // body bob: 2× za krok, + idle breath; jemnější než abs(cos)
+  // body bob: 2× za krok, + idle breath v2 (stronger chest / shoulder lift)
   const strideBob = (1 - Math.cos(p * 2)) * .5; // 0..1
   const idle = 1 - mk;
-  const breathWave = Math.sin(t.now / 680);
-  const breath = idle * breathWave * .032;
+  const breathWave = Math.sin(t.now / 720);
+  const breathWave2 = Math.sin(t.now / 1100 + .4);
+  const breath = idle * (breathWave * .045 + breathWave2 * .012);
   g.body.position.y = lerp(g.body.position.y, strideBob * .05 * mk + breath, 9);
   // lean / hip sway — soft rates
   const leanX = (running && a > 5 ? .11 : mk * .035);
-  g.body.rotation.x = lerp(g.body.rotation.x, leanX, 5);
+  g.body.rotation.x = lerp(g.body.rotation.x, leanX + idle * breathWave * .018, 5);
   g.body.rotation.y = lerp(g.body.rotation.y, sn * .048 * mk, 7);
   g.body.rotation.z = lerp(g.body.rotation.z, sn * .03 * mk, 7);
-  // walk squash + subtle idle chest breath
+  // walk squash + clearer idle chest breath
   const wsq = Math.sin(p * 2) * .022 * mk;
-  const bsc = idle * breathWave * .014;
-  const sx = 1 + wsq * .35 + bsc, sy = 1 - wsq + bsc * .6, sz = 1 + wsq * .35 + bsc;
+  const bsc = idle * (breathWave * .022 + breathWave2 * .008);
+  const sx = 1 + wsq * .35 + bsc, sy = 1 - wsq + bsc * .55, sz = 1 + wsq * .35 + bsc * .85;
   g.body.scale.x = lerp(g.body.scale.x, sx, 10);
   g.body.scale.y = lerp(g.body.scale.y, sy, 10);
   g.body.scale.z = lerp(g.body.scale.z, sz, 10);
@@ -801,5 +810,24 @@ export function animateGuru(g, t, speed, running) {
         }
       });
     }
+  }
+
+  // idle blink (Guru + Fiškule via head.eyes[].lid) — rare sharp close
+  if (g.head.eyes && g.head.eyes.length) {
+    const off = g._blinkOff || 0;
+    const cycle = ((t.now / 1000) + off) % 3.6;
+    // double-blink occasionally
+    let blinkAmt = 0;
+    if (cycle < .11) blinkAmt = Math.sin((cycle / .11) * Math.PI);
+    else if (cycle > .18 && cycle < .28) blinkAmt = Math.sin(((cycle - .18) / .1) * Math.PI) * .85;
+    g.head.eyes.forEach(eye => {
+      if (!eye.lid) return;
+      const lid = eye.lid;
+      const baseY = lid.userData.baseY ?? .05;
+      lid.scale.y = lerp(lid.scale.y, .15 + blinkAmt * 1.6, 22);
+      lid.position.y = lerp(lid.position.y, baseY - blinkAmt * .045, 22);
+      // slight brow push via eye group squash
+      eye.scale.y = lerp(eye.scale.y, 1 - blinkAmt * .35, 20);
+    });
   }
 }

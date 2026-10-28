@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — PR9 paws: readable sole/pads/toes (foot=children[2])
+// Procedurální model Fiškule (zaječice) — PR10 polish: blink lids (shared animateGuru)
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -457,17 +457,24 @@ export function buildFiskule() {
   });
 
   [-1, 1].forEach(s => {
-    // almond doe-eyes — wider X, softer Y, slight outer-down tilt
+    // almond doe-eyes — wider X, softer Y, slight outer-down tilt + blink lid
     const e = new THREE.Group();
     e.position.set(s * .15, .05, .3);
     e.rotation.set(-.06, s * .28, s * .12);
     head.add(e);
+    head.eyes = head.eyes || [];
+    head.eyes.push(e);
     e.add(mesh(SH(.065, 16, 12), mat.eyeRim, [0, 0, -.014], [1.45, 1.15, .45]));
     e.add(mesh(SH(.105, 26, 20), mat.eyeW, [0, 0, 0], [1.25, 1.05, .55]));
     e.add(mesh(SH(.068, 22, 16), mat.iris, [s * .008, -.006, .038], [1.05, 1.0, .45]));
     e.add(mesh(SH(.034, 14, 10), mat.pupil, [s * .008, -.006, .058], [1, 1.02, .4]));
     e.add(mesh(SH(.02, 8, 6), mat.hl, [s * -.02 + .012, .026, .07]));
     e.add(mesh(SH(.01, 6, 6), mat.hl, [s * .02, -.012, .068]));
+    const lid = mesh(SH(.1, 10, 8), mat.furDark, [0, .048, .02], [1.25, .35, .65]);
+    lid.scale.y = .18;
+    lid.userData.baseY = .048;
+    e.add(lid);
+    e.lid = lid;
     // soft brow arc
     head.add(mesh(new THREE.CapsuleGeometry(.014, .09, 3, 6), mat.furDark, [s * .15, .155, .32], null, [0, 0, s * 1.15]));
     // long upright ears v2 — inner canal, rim fluff, tip (tracked for shared idle twitch)
