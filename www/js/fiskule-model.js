@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — canvas fur + cotton-ball tail (head v2 kept)
+// Procedurální model Fiškule (zaječice) — outfit v2 (vest/scarf/cargo) + prior head/fur
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -155,12 +155,15 @@ export function buildFiskule() {
     pink: std(0xe8b0a8, .88, { bumpMap: noise, bumpScale: .025 }),
     white: std(0xf6f1ea, .99, { map: cottonTex, roughnessMap: cottonTex, bumpMap: cottonTex, bumpScale: .09 }),
     cotton: std(0xffffff, .995, { map: cottonTex, roughnessMap: cottonTex, bumpMap: cottonTex, bumpScale: .11 }),
-    shirt: std(0xd8c49a, .9),
-    vest: std(0x6b704c, .92),
-    vestDark: std(0x555a3c, .93),
-    shorts: std(0xa34b37, .91),
-    shortsDark: std(0x7a3628, .92),
-    scarf: std(0xb3261e, .86),
+    shirt: std(0xd4c094, .9),
+    vest: std(0x6a7148, .9),
+    vestDark: std(0x4e5436, .92),
+    vestLight: std(0x7a8256, .88),
+    shorts: std(0xa84832, .9),
+    shortsDark: std(0x7a3424, .92),
+    shortsLight: std(0xb85a42, .88),
+    scarf: std(0xb81f1a, .84),
+    scarfDark: std(0x8a1612, .88),
     leather: std(0x5a3a22, .65, { metalness: .08 }),
     metal: std(0xc4a060, .3, { metalness: .72 }),
     brass: std(0xd4af37, .28, { metalness: .82 }),
@@ -190,30 +193,57 @@ export function buildFiskule() {
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body);
 
-  // trup: košile + vesta (více „utility“ siluety)
-  body.add(mesh(lathe([[0, .78], [.27, .8], [.29, .95], [.29, 1.12], [.26, 1.28], [.16, 1.38], [0, 1.4]]), mat.shirt));
-  body.add(mesh(lathe([[.0, .8], [.3, .8], [.31, .95], [.31, 1.12], [.28, 1.27], [.2, 1.34], [.01, 1.34]], 20), mat.vest, [0, 0, -.005], [1, 1, .98]));
-  // výstřih + kapsy vesty s chlopněmi
-  body.add(mesh(new THREE.BoxGeometry(.07, .4, .05), mat.shirt, [0, 1.08, .29], null, [-.05, 0, 0]));
+  // trup: tan shirt + olive utility vest (turnaround volume)
+  body.add(mesh(lathe([[0, .78], [.28, .8], [.3, .95], [.3, 1.12], [.27, 1.28], [.17, 1.38], [0, 1.4]], 24), mat.shirt));
+  // vest shell — slightly thicker/boxier utility silhouette
+  body.add(mesh(lathe([[.0, .78], [.32, .8], [.335, .96], [.335, 1.14], [.3, 1.28], [.22, 1.35], [.02, 1.35]], 24), mat.vest, [0, 0, -.008], [1, 1, .97]));
+  // open placket showing shirt
+  body.add(mesh(new THREE.BoxGeometry(.08, .42, .04), mat.shirt, [0, 1.08, .3], null, [-.04, 0, 0]));
+  // collar flaps
   [-1, 1].forEach(s => {
-    body.add(mesh(new THREE.BoxGeometry(.14, .11, .035), mat.vestDark, [s * .17, .95, .3]));
-    body.add(mesh(new THREE.BoxGeometry(.12, .04, .02), mat.vest, [s * .17, 1.02, .322]));
-    body.add(mesh(new THREE.CylinderGeometry(.012, .012, .01, 6), mat.brass, [s * .17, .98, .34], null, [Math.PI / 2, 0, 0]));
+    body.add(mesh(new THREE.BoxGeometry(.14, .06, .04), mat.vestLight, [s * .1, 1.34, .22], null, [.35, 0, s * -.5]));
   });
-  // šátek — výraznější červený kontrast
-  body.add(mesh(new THREE.TorusGeometry(.17, .075, 8, 18), mat.scarf, [0, 1.38, 0], [1, 1, .9], [Math.PI / 2, 0, 0]));
-  body.add(mesh(new THREE.ConeGeometry(.18, .32, 3), mat.scarf, [0, 1.22, .28], [1, 1, .32], [Math.PI + .25, 0, 0]));
-  body.add(mesh(new THREE.BoxGeometry(.06, .08, .04), mat.scarf, [.08, 1.18, .3], null, [0, 0, .4]));
-  // šortky cargo
-  body.add(mesh(lathe([[0, .5], [.3, .52], [.33, .66], [.31, .82], [0, .82]]), mat.shorts));
-  body.add(mesh(new THREE.CylinderGeometry(.305, .305, .05, 20), mat.shortsDark, [0, .8, 0]));
+  // chest pockets with flaps + brass snaps
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.15, .13, .045), mat.vestDark, [s * .175, .94, .31]));
+    body.add(mesh(new THREE.BoxGeometry(.155, .045, .03), mat.vestLight, [s * .175, 1.015, .335], null, [.15, 0, 0]));
+    body.add(mesh(new THREE.CylinderGeometry(.014, .014, .012, 8), mat.brass, [s * .175, .975, .35], null, [Math.PI / 2, 0, 0]));
+  });
+  // center brass buttons
+  [1.18, 1.08, .98].forEach(y => {
+    body.add(mesh(new THREE.CylinderGeometry(.012, .012, .01, 8), mat.brass, [0, y, .32], null, [Math.PI / 2, 0, 0]));
+  });
+  // red bandana — wrapped under vest collar + front knot/tails
+  body.add(mesh(new THREE.TorusGeometry(.185, .055, 10, 22), mat.scarf, [0, 1.36, .02], [1.05, 1, .95], [Math.PI / 2, 0, 0]));
+  body.add(mesh(new THREE.TorusGeometry(.16, .04, 8, 18), mat.scarfDark, [0, 1.35, .04], [1, 1, .9], [Math.PI / 2, .1, 0]));
+  // draped front triangle + knot
+  body.add(mesh(new THREE.ConeGeometry(.16, .28, 3), mat.scarf, [0, 1.24, .3], [1.1, 1, .28], [Math.PI + .3, 0, 0]));
+  body.add(mesh(new THREE.SphereGeometry(.045, 10, 8), mat.scarfDark, [.02, 1.3, .32]));
+  body.add(mesh(new THREE.BoxGeometry(.05, .1, .035), mat.scarf, [.1, 1.2, .32], null, [0, 0, .45]));
+  body.add(mesh(new THREE.BoxGeometry(.045, .09, .03), mat.scarfDark, [-.06, 1.18, .31], null, [0, 0, -.35]));
+  // terracotta cargo shorts — fuller hips + waistband
+  body.add(mesh(lathe([[0, .48], [.32, .5], [.36, .62], [.355, .78], [.32, .84], [0, .84]], 24), mat.shorts));
+  body.add(mesh(new THREE.CylinderGeometry(.33, .33, .055, 24), mat.shortsDark, [0, .82, 0]));
+  // belt loops hint
+  [-1, 0, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.04, .07, .025), mat.shortsLight, [s * .22, .82, .3]));
+  });
+  // front fly seam
+  body.add(mesh(new THREE.BoxGeometry(.02, .14, .02), mat.shortsDark, [0, .68, .34]));
 
-  // nohy: [0] šortky, [1] kapsa, [2] foot
+  // nohy: [0] šortky, [1] cargo kapsa, [2] foot  (animateGuru foot index)
   const legs = [-1, 1].map(s => {
     const g = new THREE.Group();
-    g.position.set(s * .145, .66, 0);
-    g.add(mesh(lathe([[0, 0], [.18, -.02], [.19, -.24], [.2, -.33], [0, -.33]], 14), mat.shorts));
-    g.add(mesh(new THREE.BoxGeometry(.07, .14, .12), mat.shortsDark, [s * .16, -.17, 0]));
+    g.position.set(s * .155, .66, 0);
+    // fuller cargo leg volume
+    g.add(mesh(lathe([[0, 0], [.2, -.02], [.22, -.2], [.21, -.36], [0, -.36]], 16), mat.shorts));
+    // cargo pocket with flap (single mesh group as children[1])
+    const pocket = new THREE.Group();
+    pocket.position.set(s * .18, -.16, 0);
+    g.add(pocket);
+    pocket.add(mesh(new THREE.BoxGeometry(.1, .16, .1), mat.shortsDark, [0, 0, 0]));
+    pocket.add(mesh(new THREE.BoxGeometry(.105, .045, .04), mat.shortsLight, [0, .085, .02], null, [.2, 0, 0]));
+    pocket.add(mesh(new THREE.CylinderGeometry(.01, .01, .01, 6), mat.brass, [0, .05, .055], null, [Math.PI / 2, 0, 0]));
     const foot = new THREE.Group();
     foot.position.set(0, -.58, .1);
     g.add(foot);
