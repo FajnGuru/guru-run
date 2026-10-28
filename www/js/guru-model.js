@@ -1,5 +1,6 @@
 // Procedurální model Guru (husky) — first-pass look upgrade (méně plastu, čitelnější oči/brýle)
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
+// t.lookCam = true → idle look-back ke kameře (Crash); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
 import * as THREE from 'three';
 
@@ -49,8 +50,11 @@ export function buildGuru() {
     iris: std(0x2cae62, .28, { emissive: 0x0a3a1a, emissiveIntensity: .22 }),
     pupil: std(0x050505, .18),
     hl: new THREE.MeshBasicMaterial({ color: 0xffffff }),
-    mouth: std(0x3a2a28, .85),
+    mouth: std(0x2a1816, .85),
+    tongue: std(0xe84a5f, .55, { emissive: 0x4a1018, emissiveIntensity: .12 }),
+    gum: std(0xc47878, .7),
     stitch: std(0x8b5a2b, .75),
+    brow: std(0x1a1512, .9),
   };
   const mesh = (g, m, p = [0, 0, 0], s, r) => {
     const k = new THREE.Mesh(g, m);
@@ -116,12 +120,12 @@ export function buildGuru() {
     return g;
   });
 
-  // --- hlava ---
+  // --- hlava (Crash-like: velké oči, oblouková obočí, široký úšklebek + jazyk) ---
   const head = new THREE.Group();
   head.position.set(0, 2.24, .02);
   body.add(head);
   head.add(mesh(S(.44, 28, 20), mat.fur, [0, 0, 0], [1.08, 1.0, .98]));
-  // líce / chmýří — silueta měkčí než jedna koule
+  // líce / chmýří
   [-1, 1].forEach(s => {
     head.add(mesh(S(.18, 14, 12), mat.fur, [s * .28, -.05, .08], [.85, .95, .9]));
     head.add(mesh(S(.12, 12, 10), mat.fur, [s * .22, -.18, .18], [.9, .7, .85]));
@@ -130,23 +134,32 @@ export function buildGuru() {
   head.add(mesh(S(.22, 20, 14), mat.fur, [0, -.13, .36], [1.05, .82, 1.4]));
   head.add(mesh(S(.085, 14, 10), mat.nose, [0, -.06, .64], [1.25, .85, .9]));
   head.add(mesh(S(.03, 8, 6), mat.hl, [-.03, -.025, .7]));
-  // úsměv
-  head.add(mesh(new THREE.TorusGeometry(.09, .011, 6, 16, Math.PI * .8), mat.mouth, [0, -.21, .55], null, [0, 0, Math.PI * 1.1]));
-  head.add(mesh(new THREE.CylinderGeometry(.008, .008, .09, 6), mat.mouth, [0, -.15, .6], null, [-.4, 0, 0]));
-  // šedá kresba na čele + tmavé obočí
+  // široký otevřený úšklebek (Crash) — tlama + jazyk ven
+  const jaw = new THREE.Group();
+  jaw.position.set(0, -.22, .48);
+  head.add(jaw);
+  jaw.add(mesh(S(.14, 14, 10), mat.mouth, [0, -.02, .02], [1.35, .55, .9]));
+  jaw.add(mesh(new THREE.SphereGeometry(.11, 12, 8, 0, Math.PI * 2, 0, Math.PI * .55), mat.gum, [0, .02, .04], [1.2, .7, 1]));
+  // jazyk ven mírně doprava (goofy)
+  const tongue = mesh(new THREE.CapsuleGeometry(.045, .16, 4, 8), mat.tongue, [.06, -.08, .12], [1, 1, .7], [.55, 0, .35]);
+  jaw.add(tongue);
+  head.tongue = tongue;
+  // šedá kresba na čele
   head.add(mesh(S(.16, 16, 10), mat.furGrey, [0, .17, .33], [.55, 1.1, .45], [-.35, 0, 0]));
   [-1, 1].forEach(s => {
-    head.add(mesh(new THREE.CapsuleGeometry(.025, .12, 3, 6), mat.furDark, [s * .17, .17, .38], null, [0, 0, s * 1.25]));
-    // oko — větší bělmo + čitelnější iris
+    // obloukové obočí (výraz „ou!“ / energie)
+    head.add(mesh(new THREE.CapsuleGeometry(.022, .16, 3, 6), mat.brow, [s * .17, .22, .36], null, [0, .15 * s, s * 1.05]));
+    head.add(mesh(S(.04, 8, 6), mat.brow, [s * .08, .26, .38], [.9, .5, .6]));
+    // velké expresivní oči
     const e = new THREE.Group();
-    e.position.set(s * .16, .06, .37);
-    e.rotation.y = s * .32;
+    e.position.set(s * .155, .07, .38);
+    e.rotation.y = s * .28;
     head.add(e);
-    e.add(mesh(S(.105, 16, 12), mat.eyeW, [0, 0, 0], [1.08, 1.05, .62]));
-    e.add(mesh(S(.072, 14, 10), mat.iris, [0, -.003, .045], [1, 1, .48]));
-    e.add(mesh(S(.038, 10, 8), mat.pupil, [0, -.003, .07], [1, 1, .42]));
-    e.add(mesh(S(.018, 6, 6), mat.hl, [s * -.02 + .012, .028, .085]));
-    e.add(mesh(S(.01, 6, 6), mat.hl, [s * .02, -.01, .082]));
+    e.add(mesh(S(.125, 16, 12), mat.eyeW, [0, 0, 0], [1.15, 1.2, .65]));
+    e.add(mesh(S(.085, 14, 10), mat.iris, [0, -.004, .05], [1.05, 1.1, .5]));
+    e.add(mesh(S(.045, 10, 8), mat.pupil, [0, -.004, .078], [1, 1.05, .45]));
+    e.add(mesh(S(.022, 6, 6), mat.hl, [s * -.025 + .012, .035, .095]));
+    e.add(mesh(S(.012, 6, 6), mat.hl, [s * .025, -.015, .09]));
     // šedé tváře
     head.add(mesh(S(.2, 14, 10), mat.furGrey, [s * .33, .1, -.12], [.5, 1, 1]));
     // uši
@@ -166,7 +179,7 @@ export function buildGuru() {
   head.add(mesh(new THREE.TorusGeometry(.45, .025, 8, 32), mat.leatherDark, [0, .1, .06], [1.08, 1.03, 1], [Math.PI / 2 - .22, 0, 0]));
   head.add(mesh(new THREE.TorusGeometry(.2, .02, 6, 20, Math.PI), mat.leatherDark, [0, .3, .24], [1.2, 1, 1], [-.3, 0, 0]));
   head.add(mesh(new THREE.SphereGeometry(.47, 20, 10, Math.PI * 1.1, Math.PI * .8, Math.PI * .35, Math.PI * .4), mat.leather, [0, 0, -.04], [1.08, 1.12, 1.03]));
-  // brýle na čele — silnější rám + tmavší sklo
+  // brýle na čele
   const gog = new THREE.Group();
   gog.position.set(0, .36, .33);
   gog.rotation.x = -.95;
@@ -195,15 +208,29 @@ export function buildGuru() {
 
 export function animateGuru(g, t, speed, running) {
   const a = Math.abs(speed), k = Math.min(1, a / 4), sw = k * (running ? .95 : .6);
-  g.phase = (g.phase || 0) + t.dt * (3 + a * 1.5);
+  const dt = t.dt;
+  g.phase = (g.phase || 0) + dt * (3 + a * 1.5);
   const p = g.phase, sn = Math.sin(p);
   g.legs[0].rotation.x = sn * sw; g.legs[1].rotation.x = -sn * sw;
   g.legs.forEach((l, i) => l.children[2].rotation.x = Math.max(0, (i ? sn : -sn)) * .5 * k);
   g.arms[0].rotation.x = -sn * sw * .9; g.arms[1].rotation.x = sn * sw * .9;
   g.body.position.y = Math.abs(Math.cos(p)) * .07 * k;
-  g.body.rotation.x += ((running && a > 5 ? .16 : 0) - g.body.rotation.x) * Math.min(1, t.dt * 6);
+  g.body.rotation.x += ((running && a > 5 ? .16 : 0) - g.body.rotation.x) * Math.min(1, dt * 6);
   g.body.rotation.y = Math.sin(p) * .06 * k;
-  g.head.rotation.z = Math.sin(p) * .04 * k;
-  g.head.rotation.y = a < .5 ? Math.sin(t.now / 900) * .15 : 0;
+  // Crash-style idle: když lookCam (stojí na zemi), otočí hlavu přes rameno ke kameře vzadu
+  const wantLook = !!t.lookCam;
+  g._lookT = Math.min(1, Math.max(0, (g._lookT || 0) + (wantLook ? dt * 1.8 : -dt * 3.2)));
+  const look = g._lookT;
+  const walkY = a < .5 && !wantLook ? Math.sin(t.now / 900) * .15 : 0;
+  const lookY = 1.35 + Math.sin(t.now / 700) * .06; // přes levé rameno k meru vzadu
+  const lookZ = .12;
+  const lookX = -.08;
+  const faceY = walkY;
+  const faceZ = Math.sin(p) * .04 * k;
+  const faceX = 0;
+  const lerp = (cur, tgt, rate) => cur + (tgt - cur) * Math.min(1, dt * rate);
+  g.head.rotation.y = lerp(g.head.rotation.y, faceY + (lookY - faceY) * look, 8);
+  g.head.rotation.z = lerp(g.head.rotation.z, faceZ + (lookZ - faceZ) * look, 8);
+  g.head.rotation.x = lerp(g.head.rotation.x, faceX + (lookX - faceX) * look, 8);
   g.tail.rotation.y = Math.sin(t.now / (a > 1 ? 90 : 160)) * .55; g.tail.rotation.x = -.2;
 }

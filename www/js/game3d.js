@@ -326,7 +326,7 @@ function tick(now) {
   updateSiki(dt, now);
   if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
-  animateGuru(G, { dt, now }, grounded ? speed : 0, running);
+  animateGuru(G, { dt, now, lookCam: grounded && !falling && Math.abs(speed) < .35 && Math.abs(fwd) < .15 }, grounded ? speed : 0, running);
   if (!grounded) { const up = vy > 0; G.arms.forEach((a, i) => a.rotation.x = up ? -2.6 : -1.6); G.legs[0].rotation.x = up ? -.9 : -.3; G.legs[1].rotation.x = up ? .5 : .2; G.body.rotation.x = up ? -.1 : .15; }
   squash *= Math.pow(.0005, dt); const q = squash > 0 ? squash * .25 : squash * .18;
   guru.scale.set(1 + q, 1 - q * 1.4, 1 + q);
