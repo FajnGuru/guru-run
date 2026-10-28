@@ -1,4 +1,4 @@
-// Procedurální model Guru (husky) — PR3 mouth: cavity, teeth, clearer open smile
+// Procedurální model Guru (husky) — PR4 tail: denser fur clumps + run/idle sway
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
@@ -566,16 +566,42 @@ export function buildGuru() {
   });
   gog.add(mesh(new THREE.BoxGeometry(.08, .04, .05), mat.leatherDark, [0, .01, 0]));
 
-  // --- ocas: hustší chuchvalec ---
+  // --- ocas v2: hustší husky curl, 3 segmenty pro cascade sway ---
   const tail = new THREE.Group();
   tail.position.set(0, 1.0, -.3);
   body.add(tail);
-  tail.add(mesh(S(.14, 14, 12), mat.fur, [0, .02, -.08], [1, 1, 1.2]));
-  tail.add(mesh(S(.19, 14, 12), mat.fur, [0, .1, -.24], [1, 1.2, 1]));
-  tail.add(mesh(S(.14, 12, 10), mat.furGrey, [0, .18, -.28], [.85, 1, .9]));
-  tail.add(mesh(S(.16, 12, 10), mat.fur, [0, .3, -.3], [1, 1.1, 1]));
-  tail.add(mesh(S(.11, 10, 8), mat.fur, [0, .44, -.24]));
-  tail.add(mesh(S(.08, 8, 6), mat.furGrey, [.06, .38, -.22], [.9, .8, .9]));
+  // base segment (hip attach)
+  const t0 = new THREE.Group();
+  tail.add(t0);
+  t0.add(mesh(S(.145, 14, 12), mat.fur, [0, .02, -.06], [1.05, 1, 1.15]));
+  t0.add(mesh(S(.1, 12, 10), mat.furGrey, [.06, .04, -.04], [.9, .85, .9]));
+  t0.add(mesh(S(.09, 10, 8), mat.furDark, [-.05, .05, -.08], [.85, .8, .9]));
+  // mid segment
+  const t1 = new THREE.Group();
+  t1.position.set(0, .08, -.16);
+  t0.add(t1);
+  t1.add(mesh(S(.2, 14, 12), mat.fur, [0, .04, -.08], [1.05, 1.25, 1.1]));
+  t1.add(mesh(S(.14, 12, 10), mat.furGrey, [.07, .1, -.1], [.95, 1.05, .95]));
+  t1.add(mesh(S(.12, 12, 10), mat.fur, [-.08, .08, -.12], [1, 1.1, .95]));
+  t1.add(mesh(S(.08, 10, 8), mat.furDark, [0, .14, -.06], [1.1, .7, .85])); // fluff clump
+  t1.add(mesh(S(.07, 8, 6), mat.furHead, [.05, .02, -.14], [.9, .8, .85]));
+  // tip segment (curl up)
+  const t2 = new THREE.Group();
+  t2.position.set(0, .16, -.12);
+  t1.add(t2);
+  t2.add(mesh(S(.155, 12, 10), mat.fur, [0, .08, -.04], [1.05, 1.15, 1]));
+  t2.add(mesh(S(.12, 12, 10), mat.fur, [0, .2, .02], [1, 1.05, .95]));
+  t2.add(mesh(S(.09, 10, 8), mat.furGrey, [.05, .26, .04], [.95, .9, .9]));
+  t2.add(mesh(S(.075, 10, 8), mat.fur, [-.04, .28, 0], [.9, .95, .85]));
+  t2.add(mesh(S(.055, 8, 6), mat.furHead, [0, .34, .04], [1, .8, .9])); // tip tuft
+  t2.add(mesh(S(.05, 8, 6), mat.furDark, [.04, .22, -.02], [.85, .75, .8]));
+  // store segments for cascade sway
+  tail.segs = [t0, t1, t2];
+  t0.userData.base = { x: 0, y: 0, z: 0 };
+  t1.userData.base = { x: -.12, y: 0, z: 0 };
+  t2.userData.base = { x: -.2, y: 0, z: 0 };
+  t1.rotation.x = -.12;
+  t2.rotation.x = -.2;
 
   return { root, body, head, arms, legs, tail };
 }
@@ -660,10 +686,29 @@ export function animateGuru(g, t, speed, running) {
     const jOpen = .02 + idle * (0.012 + Math.sin(t.now / 720) * .01);
     g.head.jaw.rotation.x = lerp(g.head.jaw.rotation.x, jOpen, 6);
   }
-  // ocas — plynulejší
-  const tailSp = a > 1 ? 100 : 180;
-  g.tail.rotation.y = lerp(g.tail.rotation.y, Math.sin(t.now / tailSp) * (.4 + mk * .2), 6);
-  g.tail.rotation.x = lerp(g.tail.rotation.x, -.18 - mk * .06, 5);
+  // ocas v2 — root + cascade segs; stronger sway when running, soft idle wag
+  {
+    const runBoost = running ? 1.25 : 1;
+    const wagAmp = (.28 + mk * .42) * runBoost;
+    const idleWag = idle * .18;
+    const tailSp = a > 1.2 ? 85 : (a > .4 ? 130 : 220);
+    const wave = Math.sin(t.now / tailSp);
+    const wave2 = Math.sin(t.now / (tailSp * 1.35) + .6);
+    g.tail.rotation.y = lerp(g.tail.rotation.y, wave * (wagAmp + idleWag), 7);
+    g.tail.rotation.x = lerp(g.tail.rotation.x, -.16 - mk * .08 - idle * .04 + wave2 * .04 * mk, 6);
+    g.tail.rotation.z = lerp(g.tail.rotation.z || 0, wave * .06 * mk, 6);
+    if (g.tail.segs) {
+      g.tail.segs.forEach((seg, i) => {
+        const b = seg.userData.base || { x: 0, y: 0, z: 0 };
+        const lag = i * .55;
+        const w = Math.sin(t.now / tailSp - lag);
+        const amp = (.12 + mk * .16) * (1 + i * .35) * runBoost;
+        seg.rotation.y = lerp(seg.rotation.y, b.y + w * amp + idle * w * .08, 8);
+        seg.rotation.x = lerp(seg.rotation.x, b.x + Math.sin(t.now / (tailSp * 1.2) - lag) * (.04 + mk * .05), 7);
+        seg.rotation.z = lerp(seg.rotation.z, b.z + w * .03 * mk * (i + 1), 7);
+      });
+    }
+  }
 
   // idle ear twitch (Guru + Fiškule via head.ears) — soft sway + rare spike, damped while running
   if (g.head.ears && g.head.ears.length) {
