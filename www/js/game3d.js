@@ -55,6 +55,7 @@ let ctrlMode = readCtrl();
 const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 });
 // --- ulice ---
 const LEN = 800, HALF_W = 5, WALK_X = HALF_W + 3.2;
+const L3_END_Z = -LEN + 42; // meadow / finish zone
 // díry: z začátek (blíž startu), délka – rostoucí obtížnost
 const HOLES = LEVEL === 1 ? [[-60, 2.4], [-130, 2.8], [-200, 3.2], [-270, 3.6], [-340, 3.6], [-410, 4.0], [-480, 4.2], [-550, 4.4], [-620, 4.6], [-690, 4.8]].map(([z, l]) => ({ z0: z, z1: z - l })) : [];
 const CHECKS = LEVEL === 1 ? [0, -120, -260, -400, -540, -680] : LEVEL === 3 ? [0, -100, -220, -360, -500, -640] : [0];
@@ -181,7 +182,7 @@ const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visib
 F.charLights = attachCharLights(fis, { fillI: .4, rimI: .52 });
 F._blinkOff = 1.85;
 const fisBlob = makeGroundBlob(.55, .28); fis.add(fisBlob);
-let fState = LEVEL === 1 ? 'idle' : 'npc', fVy = 0, fT = 0, fSpeed = 0, fLeadWait = false, fLost = false, fWaitToast = false;
+let fState = LEVEL === 1 ? 'idle' : 'npc', fVy = 0, fT = 0, fSpeed = 0, fLeadWait = false, fLost = false, fWaitToast = false, fEndToast = false;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
 addEventListener('keydown', () => { if (cut) { cutSkip = true; sikiTap(); } });
@@ -337,7 +338,7 @@ function applyCtrl(mode, { persist = true } = {}) {
 }
 
 const over = document.getElementById('over');
-function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonesTotal ?? bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; if (win && LEVEL === 2) document.getElementById('l3btn').style.display = 'inline-block'; over.classList.add('on'); }
+function endScreen(title, win) { done = true; document.getElementById('ovT').textContent = title; document.getElementById('ovS').textContent = (LEVEL === 2 ? `Čas: ${fmtT(raceT)}   ·   ` : '') + `Kostičky: ${bones} / ${bonesTotal ?? bonePts.length}   ·   Životy: ${Math.max(0, lives)}`; if (win && LEVEL === 1) document.getElementById('l2btn').style.display = 'inline-block'; if (win && LEVEL === 2) document.getElementById('l3btn').style.display = 'inline-block'; if (win && LEVEL === 3) { const b = document.getElementById('l4btn'); if (b) b.style.display = 'inline-block'; } over.classList.add('on'); }
 let raceT = 0; const fmtT = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor(t * 10 % 10)}`;
 
 // --- smyčka ---
@@ -395,6 +396,8 @@ syncFullscreenUi();
 function updateFiskule(dt, now) {
   const gp = guru.position;
   if (fState === 'npc') return;
+  if (fState === 'leadIntro') { updateL3LeadIntro(dt, now); return; }
+  if (fState === 'leadEnd') { updateL3LeadEnd(dt, now); return; }
   if (fState === 'lead') { updateFiskuleLead(dt, now); return; }
   if (fState === 'idle') { if (gp.z < -350) { fState = 'approach'; fis.visible = true; fis.position.set(1.2, 0, gp.z - 38); fis.rotation.y = 0; } return; }
   if (fState === 'approach') {
@@ -428,9 +431,66 @@ function updateFiskule(dt, now) {
   animateGuru(F, { dt, now }, fis.position.y > 0 ? 0 : fSpeed, fSpeed > 5); holdCompass();
   if (fis.position.y > 0) { F.legs[0].rotation.x = -.8; F.legs[1].rotation.x = .4; }
 }
+function updateL3LeadIntro(dt, now) {
+  // Start cutscene: Fiškule calls Guru into the forest (L1 'cut' untouched)
+  const gp = guru.position;
+  fT += dt;
+  const dir = new THREE.Vector3(gp.x - fis.position.x, 0, gp.z - fis.position.z).normalize();
+  fis.rotation.y = Math.atan2(dir.x, dir.z);
+  const side = new THREE.Vector3(-dir.z, 0, dir.x);
+  const camT = tmp.copy(fis.position).addScaledVector(dir, 2.2).addScaledVector(side, 4.8); camT.y = 2.2;
+  camPos.lerp(camT, 1 - Math.pow(.06, dt)); camera.position.copy(camPos);
+  camera.lookAt(fis.position.x * .7 + gp.x * .3, 1.4, fis.position.z * .7 + gp.z * .3);
+  fis.position.y = Math.abs(Math.sin(fT * 5.5)) * .28;
+  animateGuru(F, { dt, now }, 0, false);
+  F.arms[1].rotation.set(0, 0, 2.5 + Math.sin(fT * 9) * .4);
+  guru.rotation.y = Math.atan2(fis.position.x - gp.x, fis.position.z - gp.z);
+  animateGuru(G, { dt, now }, 0, false);
+  if ((cutSkip && fT > .55) || fT > 4) {
+    cut = false; fState = 'lead'; fis.position.y = 0; fT = 0;
+    bubble.classList.remove('on');
+    compassEl.classList.add('on');
+    showToast('Následuj Fiškuli do lesa!');
+  }
+}
+function updateL3LeadEnd(dt, now) {
+  // Finish cutscene on the meadow
+  const gp = guru.position, fp = fis.position;
+  fT += dt;
+  const mid = tmp.set((gp.x + fp.x) * .5, 1.5, (gp.z + fp.z) * .5);
+  const dir = new THREE.Vector3(gp.x - fp.x, 0, gp.z - fp.z).normalize();
+  fis.rotation.y = Math.atan2(dir.x, dir.z);
+  guru.rotation.y = Math.atan2(fp.x - gp.x, fp.z - gp.z);
+  const side = new THREE.Vector3(-dir.z, 0, dir.x);
+  const camT = mid.clone().addScaledVector(side, 5.5); camT.y = 2.6;
+  camPos.lerp(camT, 1 - Math.pow(.05, dt)); camera.position.copy(camPos);
+  camera.lookAt(mid.x, 1.3, mid.z);
+  fis.position.y = Math.abs(Math.sin(fT * 5)) * .22;
+  animateGuru(F, { dt, now }, 0, false);
+  F.arms[1].rotation.set(0, 0, 2.55 + Math.sin(fT * 8) * .35);
+  animateGuru(G, { dt, now }, 0, false);
+  if ((cutSkip && fT > .7) || fT > 4.2) {
+    cut = false; bubble.classList.remove('on'); fis.position.y = 0;
+    endScreen('Mýtina! Les máte za sebou 🌲', true);
+  }
+}
 function updateFiskuleLead(dt, now) {
   // L3: Fiškule is the leader along -Z; waits if Guru lags too far
   const gp = guru.position, fp = fis.position;
+  const distG = Math.hypot(gp.x - fp.x, gp.z - fp.z);
+  // finish: Guru in meadow with Fiškule nearby
+  if (!done && gp.z <= L3_END_Z && distG < 15) {
+    fState = 'leadEnd'; cut = true; cutSkip = false; fT = 0; fSpeed = 0; fVy = 0; fp.y = 0;
+    compassEl.classList.remove('on'); compassEl.style.opacity = '';
+    birds.forEach(b => { if (b.state === 'tele' || b.state === 'dive') { b.state = 'circle'; b.mark.visible = false; } });
+    bubble.innerHTML = 'Zvládli jsme to! 🐰🌲<br>Mýtina je naše — les máš za sebou.<br>Level 4 už brzy…<small>ťukni nebo stiskni klávesu</small>';
+    bubble.classList.add('on');
+    if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(30);
+    return;
+  }
+  if (!done && gp.z <= L3_END_Z + 6 && distG >= 15) {
+    if (!fEndToast) { fEndToast = true; showToast('Počkej na Fiškuli!'); }
+  }
   const ahead = gp.z - fp.z; // >0 when she is deeper (-Z) than Guru
   const WAIT_AHEAD = 22, RESUME_AHEAD = 12;
   if (!fLeadWait && ahead > WAIT_AHEAD) {
@@ -447,7 +507,7 @@ function updateFiskuleLead(dt, now) {
     }
   }
   tx = THREE.MathUtils.clamp(tx, -WALK_X + .6, WALK_X - .6);
-  const endZ = -LEN + 36;
+  const endZ = L3_END_Z - 2; // wait in the meadow
   if (fLeadWait || fp.z <= endZ) {
     // wait / look back toward Guru
     fSpeed += (0 - fSpeed) * Math.min(1, dt * 6);
@@ -528,7 +588,7 @@ function fJump(dt, mx, mz) {
   if (!grounded || fVy > 0) { fVy -= GRAV * dt; p.y += fVy * dt; if (p.y < 0 && !holeAt(p.z)) { p.y = 0; fVy = 0; } }
 }
 window.__tp = z => { guru.position.set(0, 0, z); checkpoint = Math.min(checkpoint, z + 1); camPos.set(0, 4, z + 8); };
-window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut, leadWait: fLeadWait, lost: fLost, fSpeed });
+window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut, leadWait: fLeadWait, lost: fLost, fSpeed, endZ: L3_END_Z });
 
 // --- holubi útočníci ---
 const birds = [];
@@ -856,7 +916,8 @@ function startLevel3() {
   cityGround.forEach(m => { m.visible = false; });
   hm.visible = false; rm.visible = false; winM.visible = false;
   gate.visible = false; siki.visible = false;
-  flags.forEach(f => { if (f.parent) f.parent.visible = false; });
+  // L3 path checkpoint flags stay visible
+  flags.forEach(f => { if (f.parent) f.parent.visible = true; });
   // grass floor
   const grassMap = makeForestTex('grass'); grassMap.repeat.set(14, 90);
   const grass = new THREE.Mesh(
@@ -895,17 +956,22 @@ function startLevel3() {
   buildForestObstacles(pathW);
   // Low hanging branches (duck/jump) + forest birds via updateBirds
   buildForestBranches(pathW);
-  checkpoint = 0;
-  // Guru walk controls (reuse L1 tick); Fiškule leads along the path
+  // Meadow / clearing at path end
+  buildForestClearing();
+  checkpoint = 0; fEndToast = false;
+  // Guru walk controls (reuse L1 tick); Fiškule intro cutscene then leads
   guru.position.set(0, 0, 0);
   heading = 0; speed = 0; camPos.set(0, 4, 8);
   fis.visible = true;
-  fis.position.set(.9, 0, -16);
-  fis.rotation.y = Math.PI; // face deeper forest (-Z)
-  fState = 'lead'; fLeadWait = false; fLost = false; fWaitToast = false; fSpeed = 0; fVy = 0;
-  compassEl.classList.add('on'); compassEl.style.opacity = '';
-  showToast('Level 3: Následuj Fiškuli 🌲');
-  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, threats: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length, branches: l3Branches.length, checks: CHECKS.length };
+  fis.position.set(.9, 0, -14);
+  fis.rotation.y = 0; // face Guru for intro
+  fState = 'leadIntro'; cut = true; cutSkip = false; fT = 0;
+  fLeadWait = false; fLost = false; fWaitToast = false; fSpeed = 0; fVy = 0;
+  compassEl.classList.remove('on'); compassEl.style.opacity = '';
+  bubble.innerHTML = 'Guru! 🐰 Pojď za mnou do lesa!<br>Na konci stezky je mýtina — následuj mě.<small>ťukni nebo stiskni klávesu</small>';
+  bubble.classList.add('on');
+  if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(25);
+  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, threats: true, cutscenes: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length, branches: l3Branches.length, checks: CHECKS.length, endZ: L3_END_Z };
   requestAnimationFrame(tick);
 }
 function syncForestDensity() {
@@ -1127,6 +1193,43 @@ function buildForestBranches(pathW) {
     g.position.set(o.x, 0, o.z);
     scene.add(g);
     z -= gap;
+  }
+}
+
+
+function buildForestClearing() {
+  const cz = L3_END_Z - 4;
+  const meadow = new THREE.Mesh(
+    new THREE.CircleGeometry(15, 28),
+    new THREE.MeshStandardMaterial({ color: 0xc8e090, roughness: .96 }),
+  );
+  meadow.rotation.x = -Math.PI / 2;
+  meadow.position.set(0, .055, cz);
+  meadow.receiveShadow = true;
+  scene.add(meadow);
+  // soft rim of taller grass
+  const rim = new THREE.Mesh(
+    new THREE.RingGeometry(12.5, 15.2, 28),
+    new THREE.MeshStandardMaterial({ color: 0x5a8a3a, roughness: .98, side: THREE.DoubleSide }),
+  );
+  rim.rotation.x = -Math.PI / 2;
+  rim.position.set(0, .06, cz);
+  scene.add(rim);
+  // cheap flower dots (no postFX)
+  const petalCols = [0xfff0a0, 0xffb4c8, 0xe8f0ff];
+  const stemM = M(0x3a7a30);
+  let seed = 0xC1EA12;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let i = 0; i < 32; i++) {
+    const a = rnd() * Math.PI * 2, r = 2.2 + rnd() * 10.5;
+    const g = new THREE.Group();
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(.02, .03, .32, 4), stemM);
+    s.position.y = .16;
+    const f = new THREE.Mesh(new THREE.SphereGeometry(.1 + rnd() * .06, 5, 4), M(petalCols[i % 3]));
+    f.position.y = .36;
+    g.add(s, f);
+    g.position.set(Math.cos(a) * r, 0, cz + Math.sin(a) * r * .85);
+    scene.add(g);
   }
 }
 
