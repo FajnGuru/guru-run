@@ -1,31 +1,76 @@
-// Procedurální model Fiškule (zaječice) — refined head (canvas fur/face + finer geo)
+// Procedurální model Fiškule (zaječice) — canvas fur + cotton-ball tail (head v2 kept)
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
 
 function makeFurNoiseMap() {
-  const s = 96, c = document.createElement('canvas');
+  // denser directional fur grain for MeshStandard bump/roughness
+  const s = 128, c = document.createElement('canvas');
   c.width = c.height = s;
   const ctx = c.getContext('2d'), img = ctx.createImageData(s, s);
   for (let i = 0; i < img.data.length; i += 4) {
-    const n = 160 + ((Math.random() * 90) | 0);
+    const n = 140 + ((Math.random() * 110) | 0);
     img.data[i] = img.data[i + 1] = img.data[i + 2] = n;
     img.data[i + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
-  // jemné směrové chloupky
-  ctx.globalAlpha = .18;
-  for (let i = 0; i < 900; i++) {
+  // long soft strands
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 2200; i++) {
     const x = Math.random() * s, y = Math.random() * s;
-    ctx.strokeStyle = Math.random() > .5 ? '#fff' : '#2a1a10';
+    const len = 3 + Math.random() * 9;
+    const dx = (Math.random() - .5) * 3;
+    ctx.globalAlpha = .1 + Math.random() * .22;
+    ctx.strokeStyle = Math.random() > .55 ? '#f5efe6' : '#3a2416';
+    ctx.lineWidth = .6 + Math.random() * 1.2;
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(x + (Math.random() - .5) * 4, y + 2 + Math.random() * 5);
+    ctx.quadraticCurveTo(x + dx * .5, y + len * .45, x + dx, y + len);
+    ctx.stroke();
+  }
+  // fine short undercoat speckles
+  ctx.globalAlpha = .25;
+  for (let i = 0; i < 800; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#fff' : '#2a1810';
+    ctx.fillRect(Math.random() * s, Math.random() * s, 1.2, 1.2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3.2, 3.2);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeCottonMap() {
+  // soft cotton-ball fluff for white tail
+  const s = 96, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f8f4ee';
+  ctx.fillRect(0, 0, s, s);
+  for (let i = 0; i < 60; i++) {
+    const x = Math.random() * s, y = Math.random() * s, r = 6 + Math.random() * 18;
+    const g = ctx.createRadialGradient(x, y, 1, x, y, r);
+    g.addColorStop(0, 'rgba(255,255,255,.55)');
+    g.addColorStop(.55, 'rgba(240,235,228,.2)');
+    g.addColorStop(1, 'rgba(210,200,190,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i = 0; i < 500; i++) {
+    ctx.globalAlpha = .12 + Math.random() * .2;
+    ctx.strokeStyle = Math.random() > .4 ? '#fff' : '#c8beb4';
+    const x = Math.random() * s, y = Math.random() * s;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - .5) * 5, y + 1 + Math.random() * 4);
     ctx.stroke();
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2.4, 2.4);
+  tex.repeat.set(1.6, 1.6);
   tex.needsUpdate = true;
   return tex;
 }
@@ -88,25 +133,28 @@ function makeIrisMap() {
   return tex;
 }
 
-let _furNoise, _faceMap, _irisMap;
+let _furNoise, _faceMap, _irisMap, _cottonMap;
 function furNoise() { return _furNoise || (_furNoise = makeFurNoiseMap()); }
 function faceMap() { return _faceMap || (_faceMap = makeFaceMap()); }
 function irisMap() { return _irisMap || (_irisMap = makeIrisMap()); }
+function cottonMap() { return _cottonMap || (_cottonMap = makeCottonMap()); }
 
 export function buildFiskule() {
   const noise = furNoise();
   const faceTex = faceMap();
   const irisTex = irisMap();
+  const cottonTex = cottonMap();
   const std = (c, r = .85, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0, ...extra });
-  const furMat = (c, r = .98) => std(c, r, { roughnessMap: noise, bumpMap: noise, bumpScale: .045 });
+  const furMat = (c, r = .98, bump = .07) => std(c, r, { roughnessMap: noise, bumpMap: noise, bumpScale: bump });
   // Palette z turnaroundu: warm brown / cream / olive vest / terracotta shorts+scarf / brass
   const mat = {
-    fur: furMat(0xa67c52),
-    furLight: furMat(0xe8dcc5, .97),
-    furDark: furMat(0x4a3020, .96),
-    furFace: std(0xe8d5b0, .92, { map: faceTex, roughnessMap: noise, bumpMap: noise, bumpScale: .03 }),
-    pink: std(0xe8b0a8, .88, { bumpMap: noise, bumpScale: .02 }),
-    white: furMat(0xf6f1ea, .99),
+    fur: furMat(0xa67c52, .98, .08),
+    furLight: furMat(0xe8dcc5, .97, .065),
+    furDark: furMat(0x4a3020, .96, .075),
+    furFace: std(0xe8d5b0, .92, { map: faceTex, roughnessMap: noise, bumpMap: noise, bumpScale: .04 }),
+    pink: std(0xe8b0a8, .88, { bumpMap: noise, bumpScale: .025 }),
+    white: std(0xf6f1ea, .99, { map: cottonTex, roughnessMap: cottonTex, bumpMap: cottonTex, bumpScale: .09 }),
+    cotton: std(0xffffff, .995, { map: cottonTex, roughnessMap: cottonTex, bumpMap: cottonTex, bumpScale: .11 }),
     shirt: std(0xd8c49a, .9),
     vest: std(0x6b704c, .92),
     vestDark: std(0x555a3c, .93),
@@ -289,14 +337,26 @@ export function buildFiskule() {
   });
   gog.add(mesh(new THREE.BoxGeometry(.055, .032, .042), mat.brass, [0, .012, 0]));
 
-  // bílý cotton-ball ocásek
+  // fluffy white cotton-ball tail (turnaround puff)
   const tail = new THREE.Group();
-  tail.position.set(0, .68, -.3);
+  tail.position.set(0, .68, -.32);
   body.add(tail);
-  tail.add(mesh(S(.14, 14, 12), mat.white, [0, 0, -.04], [1, 1.15, 1]));
-  tail.add(mesh(S(.09, 10, 8), mat.white, [.05, .05, -.08], [.9, .9, .9]));
-  tail.add(mesh(S(.08, 8, 6), mat.white, [-.04, .06, -.1]));
-  tail.add(mesh(S(.07, 8, 6), mat.white, [0, .1, -.14]));
+  // core volume
+  tail.add(mesh(S(.155, 18, 14), mat.cotton, [0, .02, -.02], [1.05, 1.1, 1.05]));
+  tail.add(mesh(S(.12, 16, 12), mat.white, [0, -.02, -.08], [1.1, 1, 1.15]));
+  // overlapping fluff clumps — cotton-ball silhouette
+  const clumps = [
+    [.08, .06, -.1, .1], [-.07, .07, -.09, .095], [0, .12, -.12, .09],
+    [.05, -.05, -.14, .085], [-.06, -.04, -.13, .08], [.1, .02, -.04, .075],
+    [-.1, .01, -.05, .075], [0, .08, .02, .07], [.04, .14, -.05, .065],
+    [-.05, .13, -.06, .065], [.02, -.08, -.06, .07], [-.02, .16, -.1, .055],
+  ];
+  clumps.forEach(([x, y, z, r]) => {
+    tail.add(mesh(S(r, 12, 10), mat.cotton, [x, y, z]));
+  });
+  // soft highlight tufts
+  tail.add(mesh(S(.045, 10, 8), mat.white, [.06, .1, -.16], [1.1, 1, 1]));
+  tail.add(mesh(S(.04, 8, 6), mat.white, [-.05, .11, -.15]));
 
   return { root, body, head, arms, legs, tail, compass };
 }
