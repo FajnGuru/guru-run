@@ -185,6 +185,8 @@ export function buildGuru() {
   });
   const mat = {
     fur: furMat(0xf2efe9, .98, .035),
+    pawPad: std(0xd4a090, .75),
+    pawSole: std(0xc48a78, .8),
     furHead: furMat(0xf6f3ee, .99, .07),
     furMuzzle: std(0xffffff, .96, { map: muzTex, roughnessMap: muzTex, bumpMap: muzTex, bumpScale: .08 }),
     furGrey: furMat(0x9aa0a8, .97, .06),
@@ -291,9 +293,23 @@ export function buildGuru() {
     const foot = new THREE.Group();
     foot.position.set(0, -.85, .06);
     g.add(foot);
-    foot.add(mesh(S(.21, 16, 12), mat.fur, [0, 0, 0], [1.05, .62, 1.4]));
-    foot.add(mesh(S(.12, 12, 10), mat.furGrey, [0, -.02, -.06], [.9, .45, .7]));
-    [-1, 0, 1].forEach(t => foot.add(mesh(S(.065, 10, 8), mat.fur, [t * .085, -.02, .23], [1, .8, 1])));
+    // ankle fluff under jeans cuff
+    foot.add(mesh(S(.14, 14, 12), mat.fur, [0, .12, -.02], [1.05, .7, 1.1]));
+    // main paw body — elongated, not a ball
+    foot.add(mesh(S(.17, 18, 14), mat.fur, [0, .02, .04], [1.15, .55, 1.55]));
+    // heel / sole volume
+    foot.add(mesh(S(.12, 14, 12), mat.furGrey, [0, -.04, -.08], [1.05, .4, .85]));
+    foot.add(mesh(new THREE.BoxGeometry(.22, .04, .32), mat.pawSole, [0, -.08, .06]));
+    // metacarpal pad
+    foot.add(mesh(S(.09, 12, 10), mat.pawPad, [0, -.06, .02], [1.3, .35, 1.1]));
+    // 4 readable toes + pads
+    [-1.35, -.45, .45, 1.35].forEach((t, i) => {
+      const x = t * .055;
+      foot.add(mesh(S(.055, 12, 10), mat.fur, [x, -.02, .26], [1.05, .75, 1.25]));
+      foot.add(mesh(S(.032, 10, 8), mat.pawPad, [x, -.055, .28], [1.1, .4, 1]));
+      // tiny claw tip
+      foot.add(mesh(S(.018, 6, 6), mat.furGrey, [x, -.02, .34], [1, .5, 1.2]));
+    });
     // šev + koleno jako děti pant mesh (neposouvají children[2])
     pant.add(mesh(new THREE.BoxGeometry(.012, .72, .01), mat.stitch, [s * .155, -.38, 0]));
     pant.add(mesh(S(.09, 10, 8), mat.jeansMid, [0, -.35, .06], [1.15, .7, .9]));
@@ -309,9 +325,20 @@ export function buildGuru() {
     g.add(mesh(lathe([[0, 0], [.12, -.02], [.115, -.28], [.11, -.52], [.12, -.62], [.125, -.66], [0, -.66]], 18), mat.shirt));
     g.add(mesh(new THREE.TorusGeometry(.118, .02, 6, 14), mat.shirtShade, [0, -.64, 0], null, [Math.PI / 2, 0, 0]));
     g.add(mesh(new THREE.BoxGeometry(.01, .55, .008), mat.seam, [s * .1, -.32, 0]));
-    const hand = mesh(S(.13, 14, 12), mat.fur, [0, -.76, .02], [.95, 1.05, .85]);
+    // paw hand — palm + fingers (readable silhouette)
+    const hand = new THREE.Group();
+    hand.position.set(0, -.76, .02);
     g.add(hand);
-    g.add(mesh(S(.055, 8, 6), mat.fur, [-s * .09, -.71, .08]));
+    hand.add(mesh(S(.11, 14, 12), mat.fur, [0, 0, 0], [1.05, .95, .85]));
+    hand.add(mesh(S(.07, 12, 10), mat.pawPad, [0, -.02, .06], [1.2, .5, .9]));
+    // thumb
+    hand.add(mesh(S(.045, 10, 8), mat.fur, [-s * .1, .02, .04], [.9, .85, 1]));
+    hand.add(mesh(S(.025, 8, 6), mat.pawPad, [-s * .11, -.01, .07], [1, .45, .9]));
+    // 3 fingers
+    [-.06, 0, .06].forEach((x, i) => {
+      hand.add(mesh(S(.04, 10, 8), mat.fur, [x, -.08, .05], [.95, 1.1, .9]));
+      hand.add(mesh(S(.022, 8, 6), mat.pawPad, [x, -.11, .07], [1.05, .4, .95]));
+    });
     g.add(mesh(S(.04, 8, 6), mat.furGrey, [s * .04, -.68, .06], [1, .7, .8]));
     body.add(g);
     return g;
