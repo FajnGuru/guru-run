@@ -83,28 +83,49 @@ function makeCrownMap() {
 }
 
 function makeIrisMap() {
-  const s = 64, c = document.createElement('canvas');
+  // Deep husky-green iris: limbal ring, radial fibers, soft pupil hole (less sticker)
+  const s = 96, c = document.createElement('canvas');
   c.width = c.height = s;
   const ctx = c.getContext('2d');
-  const cx = s / 2, cy = s / 2;
-  const rg = ctx.createRadialGradient(cx, cy, 2, cx, cy, s * .48);
-  rg.addColorStop(0, '#1a5a32');
-  rg.addColorStop(.35, '#2cae62');
-  rg.addColorStop(.7, '#1e8a4a');
-  rg.addColorStop(1, '#0d3a22');
+  const cx = s / 2, cy = s / 2, R = s * .48;
+  ctx.clearRect(0, 0, s, s);
+  const rg = ctx.createRadialGradient(cx, cy, 2, cx, cy, R);
+  rg.addColorStop(0, '#0c2a18');
+  rg.addColorStop(.18, '#145a32');
+  rg.addColorStop(.42, '#1f9a52');
+  rg.addColorStop(.62, '#168048');
+  rg.addColorStop(.82, '#0e4a2a');
+  rg.addColorStop(1, '#061810');
   ctx.fillStyle = rg;
-  ctx.fillRect(0, 0, s, s);
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fill();
+  // radial fibers
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2 + (Math.random() - .5) * .05;
+    const bright = i % 3 === 0;
+    ctx.strokeStyle = bright ? 'rgba(180,255,200,0.22)' : 'rgba(10,40,20,0.35)';
+    ctx.lineWidth = bright ? 1.1 : .7;
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(a) * 28, cy + Math.sin(a) * 28);
+    ctx.moveTo(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8);
+    ctx.lineTo(cx + Math.cos(a) * (R - 2), cy + Math.sin(a) * (R - 2));
     ctx.stroke();
   }
+  // limbal ring
   ctx.beginPath();
-  ctx.arc(cx, cy, 10, 0, Math.PI * 2);
-  ctx.fillStyle = '#07150c';
+  ctx.arc(cx, cy, R - 1.5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(4,16,10,0.85)';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R - 4, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(30,120,70,0.35)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // pupil disc (texture fallback under 3D pupil)
+  ctx.beginPath();
+  ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+  ctx.fillStyle = '#030805';
   ctx.fill();
   const tex = new THREE.CanvasTexture(c);
   tex.needsUpdate = true;
@@ -144,11 +165,14 @@ export function buildGuru() {
     metal: std(0xb5a078, .28, { metalness: .78 }),
     glass: std(0x1a1816, .12, { metalness: .55, emissive: 0x0a0806, emissiveIntensity: .15 }),
     nose: std(0x141010, .38),
-    eyeW: std(0xffffff, .18),
-    eyeRim: std(0x1a1816, .85),
-    iris: std(0xffffff, .25, { map: irisTex, emissive: 0x0a3a1a, emissiveIntensity: .18 }),
-    pupil: std(0x050505, .15),
+    eyeW: std(0xf4f7f8, .22, { emissive: 0xdde8ec, emissiveIntensity: .04 }),
+    eyeRim: std(0x12100e, .9),
+    eyeSocket: std(0x2a2622, .92),
+    iris: std(0xffffff, .22, { map: irisTex, emissive: 0x0a5028, emissiveIntensity: .28 }),
+    irisRing: std(0x061810, .55),
+    pupil: std(0x020302, .12),
     hl: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    hlSoft: new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: .55 }),
     mouth: std(0x2a1816, .85),
     tongue: std(0xe84a5f, .5, { emissive: 0x4a1018, emissiveIntensity: .14 }),
     gum: std(0xc47878, .7),
@@ -295,20 +319,30 @@ export function buildGuru() {
   // čelo / šedá kresba
   head.add(mesh(SH(.15, 24, 16), mat.furGrey, [0, .18, .32], [.5, 1.05, .42], [-.35, 0, 0]));
   [-1, 1].forEach(s => {
-    // obloukové obočí — 2 segmenty
-    head.add(mesh(new THREE.CapsuleGeometry(.02, .11, 4, 8), mat.brow, [s * .18, .23, .37], null, [.1, .2 * s, s * 1.0]));
-    head.add(mesh(new THREE.CapsuleGeometry(.018, .08, 4, 8), mat.brow, [s * .1, .26, .38], null, [0, 0, s * .55]));
-    // oči — rim + větší iris mapa
+    // obloukové obočí — 3-segment arch (čitelnější oblouk)
+    const brow = new THREE.Group();
+    brow.position.set(s * .15, .24, .36);
+    brow.rotation.set(.12, s * .15, s * .95);
+    head.add(brow);
+    brow.add(mesh(new THREE.CapsuleGeometry(.016, .055, 4, 8), mat.brow, [-.055, -.012, 0], null, [0, 0, .55]));
+    brow.add(mesh(new THREE.CapsuleGeometry(.018, .07, 4, 8), mat.brow, [0, .01, .005], [1.05, 1, 1], [0, 0, 0]));
+    brow.add(mesh(new THREE.CapsuleGeometry(.015, .05, 4, 8), mat.brow, [.052, -.008, 0], null, [0, 0, -.5]));
+    // oči — socket + rim + sclera + deep iris + limbal ring + pupil + dual HL
     const e = new THREE.Group();
     e.position.set(s * .15, .075, .39);
     e.rotation.y = s * .26;
     head.add(e);
-    e.add(mesh(SH(.08, 16, 12), mat.eyeRim, [0, 0, -.01], [1.35, 1.35, .55]));
-    e.add(mesh(SH(.128, 28, 20), mat.eyeW, [0, 0, 0], [1.18, 1.22, .68]));
-    e.add(mesh(SH(.088, 24, 18), mat.iris, [0, -.002, .052], [1.05, 1.08, .55]));
-    e.add(mesh(SH(.042, 14, 12), mat.pupil, [0, -.002, .08], [1, 1.05, .48]));
-    e.add(mesh(SH(.024, 8, 8), mat.hl, [s * -.028 + .01, .038, .098]));
-    e.add(mesh(SH(.012, 8, 8), mat.hl, [s * .028, -.018, .094]));
+    e.add(mesh(SH(.095, 18, 14), mat.eyeSocket, [0, -.008, -.02], [1.45, 1.35, .7]));
+    e.add(mesh(SH(.078, 18, 14), mat.eyeRim, [0, 0, -.005], [1.38, 1.32, .52]));
+    e.add(mesh(SH(.132, 32, 24), mat.eyeW, [0, 0, 0], [1.16, 1.2, .72]));
+    // iris slightly domed / inset
+    e.add(mesh(SH(.086, 28, 22), mat.iris, [0, -.002, .048], [1.08, 1.1, .62]));
+    e.add(mesh(new THREE.TorusGeometry(.078, .008, 8, 24), mat.irisRing, [0, -.002, .055], [1, 1.02, 1], [Math.PI / 2, 0, 0]));
+    e.add(mesh(SH(.038, 16, 12), mat.pupil, [0, -.002, .078], [1, 1.05, .55]));
+    // dual highlights (large + small) — less sticker, wet look
+    e.add(mesh(SH(.026, 10, 8), mat.hl, [s * -.03 + .008, .036, .1]));
+    e.add(mesh(SH(.012, 8, 6), mat.hlSoft, [s * .022, -.016, .098]));
+    e.add(mesh(SH(.008, 6, 6), mat.hl, [s * -.018, -.02, .102]));
     // šedé boční marky
     head.add(mesh(SH(.2, 24, 18), mat.furGrey, [s * .34, .1, -.1], [.48, 1.05, 1]));
     head.add(mesh(SH(.1, 16, 12), mat.furCrown, [s * .3, .22, -.08], [.55, .7, .6]));
