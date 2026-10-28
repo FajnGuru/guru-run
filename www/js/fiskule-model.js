@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — outfit v2 (vest/scarf/cargo) + prior head/fur
+// Procedurální model Fiškule (zaječice) — props v2 (compass/goggles) + prior outfit/head/fur
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -166,10 +166,16 @@ export function buildFiskule() {
     scarfDark: std(0x8a1612, .88),
     leather: std(0x5a3a22, .65, { metalness: .08 }),
     metal: std(0xc4a060, .3, { metalness: .72 }),
-    brass: std(0xd4af37, .28, { metalness: .82 }),
-    glass: std(0x1a1816, .12, { metalness: .55, emissive: 0x080706, emissiveIntensity: .12 }),
-    gold: std(0xd9a530, .28, { metalness: .88 }),
+    brass: std(0xe0b84a, .22, { metalness: .9, emissive: 0x3a2a08, emissiveIntensity: .15 }),
+    brassDark: std(0xa07828, .3, { metalness: .85, emissive: 0x2a1e06, emissiveIntensity: .08 }),
+    glass: std(0x141210, .08, { metalness: .65, emissive: 0x1a2830, emissiveIntensity: .18 }),
+    glassLens: std(0x0c1014, .06, { metalness: .7, emissive: 0x243040, emissiveIntensity: .22 }),
+    gold: std(0xe8bc3a, .2, { metalness: .92, emissive: 0x4a3408, emissiveIntensity: .18 }),
     face: std(0xf2e6c8, .55),
+    dial: std(0xf5ecd4, .45),
+    dialInk: std(0x2a1c10, .7),
+    needleRed: std(0xc41e1a, .35, { emissive: 0x4a0808, emissiveIntensity: .25 }),
+    needleBlue: std(0x2a3a6a, .4, { emissive: 0x081020, emissiveIntensity: .1 }),
     nose: std(0xd77f86, .42, { emissive: 0x4a1820, emissiveIntensity: .08 }),
     eyeW: std(0xffffff, .2),
     eyeRim: std(0x3a2818, .7),
@@ -266,23 +272,47 @@ export function buildFiskule() {
     g.add(mesh(S(.095, 12, 10), mat.fur, [0, -.52, .02], [.9, 1.1, .9]));
     g.add(mesh(S(.04, 8, 6), mat.furLight, [0, -.55, .08], [.9, .7, .8]));
     if (s < 0) {
+      // ornate brass compass — readable while running; needle kept on compass.needle
       compass = new THREE.Group();
-      compass.position.set(0, -.6, .1);
+      compass.position.set(0, -.6, .12);
       compass.rotation.x = 2.67;
-      compass.scale.setScalar(1.35);
-      compass.add(mesh(new THREE.CylinderGeometry(.13, .13, .05, 22), mat.gold));
-      compass.add(mesh(new THREE.TorusGeometry(.12, .012, 6, 20), mat.brass, [0, .02, 0], null, [Math.PI / 2, 0, 0]));
-      compass.add(mesh(new THREE.CylinderGeometry(.105, .105, .055, 22), mat.face));
-      for (let i = 0; i < 8; i++) {
-        const ang = (i / 8) * Math.PI * 2;
-        const ray = mesh(new THREE.BoxGeometry(.012, .09, .008), std(0x8a6a30, .4, { metalness: .5 }),
-          [Math.sin(ang) * .02, .028, Math.cos(ang) * .02], null, [0, ang, 0]);
-        compass.add(ray);
+      compass.scale.setScalar(1.5);
+      // thick case + rim
+      compass.add(mesh(new THREE.CylinderGeometry(.14, .14, .055, 28), mat.gold));
+      compass.add(mesh(new THREE.CylinderGeometry(.145, .145, .02, 28), mat.brassDark, [0, -.03, 0]));
+      compass.add(mesh(new THREE.TorusGeometry(.132, .018, 8, 28), mat.brass, [0, .028, 0], null, [Math.PI / 2, 0, 0]));
+      compass.add(mesh(new THREE.TorusGeometry(.118, .008, 6, 24), mat.brassDark, [0, .036, 0], null, [Math.PI / 2, 0, 0]));
+      // cream dial
+      compass.add(mesh(new THREE.CylinderGeometry(.112, .112, .012, 28), mat.dial, [0, .03, 0]));
+      // tick marks + cardinals
+      for (let i = 0; i < 12; i++) {
+        const ang = (i / 12) * Math.PI * 2;
+        const major = i % 3 === 0;
+        const tick = mesh(
+          new THREE.BoxGeometry(major ? .018 : .01, major ? .04 : .025, .006),
+          major ? mat.dialInk : mat.brassDark,
+          [Math.sin(ang) * .085, .038, Math.cos(ang) * .085],
+          null,
+          [0, ang, 0],
+        );
+        compass.add(tick);
       }
-      const nd = mesh(new THREE.ConeGeometry(.03, .17, 4), std(0xb3261e, .5), [0, .032, 0], [1, 1, .3], [Math.PI / 2, 0, 0]);
+      // N marker pip (north)
+      compass.add(mesh(new THREE.ConeGeometry(.02, .03, 3), mat.needleRed, [0, .042, .072], null, [Math.PI, 0, 0]));
+      // glass dome over dial
+      compass.add(mesh(new THREE.SphereGeometry(.11, 20, 12, 0, Math.PI * 2, 0, Math.PI * .45), mat.glassLens, [0, .035, 0], [1, .55, 1]));
+      compass.add(mesh(SH(.02, 8, 6), mat.hl, [.04, .08, .04]));
+      // needle group — red north / blue south; rotation.z driven by holdCompass
+      const nd = new THREE.Group();
+      nd.position.set(0, .045, 0);
       compass.add(nd);
+      nd.add(mesh(new THREE.ConeGeometry(.028, .14, 4), mat.needleRed, [0, 0, .05], [1, 1, .35], [Math.PI / 2, 0, 0]));
+      nd.add(mesh(new THREE.ConeGeometry(.022, .1, 4), mat.needleBlue, [0, 0, -.04], [1, 1, .3], [-Math.PI / 2, 0, 0]));
+      nd.add(mesh(new THREE.CylinderGeometry(.015, .015, .02, 10), mat.brass, [0, 0, 0]));
       compass.needle = nd;
-      compass.add(mesh(new THREE.TorusGeometry(.025, .008, 6, 10), mat.gold, [0, 0, -.14], null, [Math.PI / 2, 0, 0]));
+      // bail ring
+      compass.add(mesh(new THREE.TorusGeometry(.03, .01, 8, 14), mat.gold, [0, 0, -.155], null, [Math.PI / 2, 0, 0]));
+      compass.add(mesh(new THREE.TorusGeometry(.018, .006, 6, 10), mat.brass, [0, 0, -.175], null, [Math.PI / 2, 0, 0]));
       g.add(compass);
     }
     body.add(g);
@@ -353,19 +383,31 @@ export function buildFiskule() {
     head.ears.push(ear);
   });
 
-  // pásek brýlí + mosazné brýle na čele
-  head.add(mesh(new THREE.TorusGeometry(.34, .03, 8, 32), mat.leather, [0, .16, -.01], [1.08, 1, 1.04], [Math.PI / 2 - .28, 0, 0]));
+  // leather strap + brass aviator goggles on forehead (readable brass/glass)
+  head.add(mesh(new THREE.TorusGeometry(.35, .032, 10, 36), mat.leather, [0, .16, -.01], [1.1, 1, 1.05], [Math.PI / 2 - .28, 0, 0]));
+  head.add(mesh(new THREE.TorusGeometry(.34, .014, 6, 28), mat.brassDark, [0, .165, 0], [1.05, 1, 1.02], [Math.PI / 2 - .28, 0, 0]));
   const gog = new THREE.Group();
-  gog.position.set(0, .26, .26);
+  gog.position.set(0, .27, .27);
   gog.rotation.x = -1.0;
   head.add(gog);
   [-1, 1].forEach(s => {
-    gog.add(mesh(new THREE.CylinderGeometry(.095, .105, .085, 18), mat.leather, [s * .115, 0, 0]));
-    gog.add(mesh(new THREE.TorusGeometry(.085, .018, 6, 18), mat.brass, [s * .115, .044, 0], null, [Math.PI / 2, 0, 0]));
-    gog.add(mesh(new THREE.CylinderGeometry(.078, .078, .022, 18), mat.glass, [s * .115, .048, 0]));
-    gog.add(mesh(SH(.018, 8, 6), mat.hl, [s * .115 - .02, .058, .032]));
+    // leather cup
+    gog.add(mesh(new THREE.CylinderGeometry(.1, .112, .09, 20), mat.leather, [s * .12, 0, 0]));
+    // double brass rim for silhouette while running
+    gog.add(mesh(new THREE.TorusGeometry(.095, .022, 8, 22), mat.brass, [s * .12, .048, 0], null, [Math.PI / 2, 0, 0]));
+    gog.add(mesh(new THREE.TorusGeometry(.08, .01, 6, 18), mat.brassDark, [s * .12, .055, 0], null, [Math.PI / 2, 0, 0]));
+    // dark glass lens + specular catch
+    gog.add(mesh(new THREE.CylinderGeometry(.082, .082, .02, 20), mat.glassLens, [s * .12, .052, 0]));
+    gog.add(mesh(new THREE.CylinderGeometry(.07, .07, .008, 16), mat.glass, [s * .12, .06, 0]));
+    gog.add(mesh(SH(.022, 8, 6), mat.hl, [s * .12 - .025, .068, .035]));
+    gog.add(mesh(SH(.01, 6, 6), mat.hl, [s * .12 + .02, .055, .04]));
   });
-  gog.add(mesh(new THREE.BoxGeometry(.055, .032, .042), mat.brass, [0, .012, 0]));
+  // brass bridge + hinge nubs
+  gog.add(mesh(new THREE.BoxGeometry(.06, .035, .045), mat.brass, [0, .015, 0]));
+  gog.add(mesh(new THREE.CylinderGeometry(.018, .018, .04, 8), mat.brassDark, [0, .02, 0], null, [0, 0, Math.PI / 2]));
+  [-1, 1].forEach(s => {
+    gog.add(mesh(new THREE.SphereGeometry(.015, 8, 6), mat.brass, [s * .055, .02, .01]));
+  });
 
   // fluffy white cotton-ball tail (turnaround puff)
   const tail = new THREE.Group();
