@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — props v2 (compass/goggles) + prior outfit/head/fur
+// Procedurální model Fiškule (zaječice) — ear base for shared idle polish + prior props
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -362,6 +362,7 @@ export function buildFiskule() {
     const ear = new THREE.Group();
     ear.position.set(s * .12, .3, -.06);
     ear.rotation.set(-.08, s * .12, -s * .18);
+    ear.userData.base = { x: ear.rotation.x, y: ear.rotation.y, z: ear.rotation.z };
     head.add(ear);
     // base fluff at skull
     ear.add(mesh(SH(.12, 16, 12), mat.fur, [0, .06, 0], [1.1, .7, .55]));

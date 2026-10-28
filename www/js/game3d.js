@@ -74,11 +74,26 @@ const arch = new THREE.Mesh(new THREE.BoxGeometry(7, 9, 8.2), M(0x111111)); arch
 [[-7, 1], [7, 1]].forEach(([x]) => { const sp = new THREE.Mesh(new THREE.ConeGeometry(1, 6, 4), M(0x2b2b2b)); sp.position.set(x, 25, 3); gate.add(sp); });
 gate.add(tower, roof, arch); gate.position.z = -LEN - 4; scene.add(gate);
 
+// Per-character rim/fill (no EffectComposer) — follows each root
+function attachCharLights(root, { fillI = .42, rimI = .55 } = {}) {
+  const fill = new THREE.PointLight(0xffe6cc, fillI, 7, 2);
+  fill.position.set(.55, 1.65, 1.35);
+  fill.castShadow = false;
+  root.add(fill);
+  const rim = new THREE.PointLight(0xa8c4ff, rimI, 6, 2);
+  rim.position.set(-1.05, 1.95, -1.25);
+  rim.castShadow = false;
+  root.add(rim);
+  return { fill, rim };
+}
+
 // --- Guru (model v guru-model.js) ---
 const G = buildGuru(); let guru = G.root; guru.scale.setScalar(1); scene.add(guru);
+G.charLights = attachCharLights(guru, { fillI: .45, rimI: .58 });
 
 // --- Fiškule (parťačka) ---
 const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visible = false; scene.add(fis);
+F.charLights = attachCharLights(fis, { fillI: .4, rimI: .52 });
 let fState = LEVEL === 2 ? 'npc' : 'idle', fVy = 0, fT = 0, fSpeed = 0;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
