@@ -57,7 +57,7 @@ const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 });
 const LEN = 800, HALF_W = 5, WALK_X = HALF_W + 3.2;
 // díry: z začátek (blíž startu), délka – rostoucí obtížnost
 const HOLES = LEVEL === 1 ? [[-60, 2.4], [-130, 2.8], [-200, 3.2], [-270, 3.6], [-340, 3.6], [-410, 4.0], [-480, 4.2], [-550, 4.4], [-620, 4.6], [-690, 4.8]].map(([z, l]) => ({ z0: z, z1: z - l })) : [];
-const CHECKS = LEVEL === 1 ? [0, -120, -260, -400, -540, -680] : [0];
+const CHECKS = LEVEL === 1 ? [0, -120, -260, -400, -540, -680] : LEVEL === 3 ? [0, -100, -220, -360, -500, -640] : [0];
 const cv = document.createElement('canvas'); cv.width = cv.height = 256; const cx = cv.getContext('2d');
 cx.fillStyle = '#4c4f55'; cx.fillRect(0, 0, 256, 256);
 for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { cx.fillStyle = `hsl(220,4%,${38 + Math.random() * 14}%)`; cx.beginPath(); cx.roundRect(x * 32 + (y % 2) * 16 + 2, y * 32 + 2, 28, 28, 6); cx.fill(); }
@@ -67,6 +67,7 @@ cob.repeat.set(5, 1);
 const cityGround = [];
 let l3Forest = null; // L3 InstancedMesh trees (set in startLevel3)
 let l3Obs = []; // L3 path obstacles (roots/rocks/logs)
+let l3Branches = []; // L3 low hanging branches
 const segs = []; { let z = 12; for (const h of HOLES) { segs.push([z, h.z0]); z = h.z1; } segs.push([z, -LEN - 12]); }
 for (const [a, b] of segs) {
   const L = a - b, g = new THREE.PlaneGeometry(HALF_W * 2, L); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, uv.getY(k) * L / 2);
@@ -539,18 +540,40 @@ let birdTimer = 4, invul = 0;
 const S0 = new THREE.Vector3(), T0 = new THREE.Vector3(), E0 = new THREE.Vector3(), V0 = new THREE.Vector3();
 function squawk() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime; o.type = 'sawtooth'; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(380, t + .25); g.gain.setValueAtTime(.05, t); g.gain.exponentialRampToValueAtTime(.001, t + .3); o.connect(g).connect(actx.destination); o.start(); o.stop(t + .32); } catch (e) {} }
 function startDive(b) {
-  const gp = guru.position; b.state = 'tele'; b.t = 0; b.T = new THREE.Vector3(gp.x, .9, gp.z); if (LEVEL === 2) { b.T.x += -Math.sin(heading) * speed * 1.75; b.T.z += -Math.cos(heading) * speed * 1.75; b.T.x = THREE.MathUtils.clamp(b.T.x, -WALK_X, WALK_X); }
-  b.mark.position.set(gp.x, .04, gp.z); b.mark.visible = true; squawk();
+  const gp = guru.position; b.state = 'tele'; b.t = 0; b.T = new THREE.Vector3(gp.x, .9, gp.z);
+  if (LEVEL === 2 || LEVEL === 3) {
+    b.T.x += -Math.sin(heading) * speed * (LEVEL === 3 ? 1.4 : 1.75);
+    b.T.z += -Math.cos(heading) * speed * (LEVEL === 3 ? 1.4 : 1.75);
+    b.T.x = THREE.MathUtils.clamp(b.T.x, -WALK_X, WALK_X);
+  }
+  b.mark.position.set(b.T.x, .04, b.T.z); b.mark.visible = true; squawk();
 }
 window.__forceDive = () => { const b = birds.find(b => b.state === 'circle' || b.state === 'off'); if (!b) return false; if (b.state === 'off') { b.state = 'circle'; b.root.visible = true; } placeCircle(b, 0); startDive(b); return true; };
-function placeCircle(b, now) { const gp = guru.position; b.a += .016; b.root.position.set(Math.sin(b.a) * 5, 6.5 + Math.sin(b.a * 2) * .6, gp.z + (LEVEL === 2 ? 22 : -12) + Math.cos(b.a) * 5); b.root.rotation.y = b.a + Math.PI / 2; }
+function placeCircle(b, now) {
+  const gp = guru.position; b.a += .016;
+  const r = LEVEL === 3 ? 4.2 : 5;
+  const y = LEVEL === 3 ? 5.1 + Math.sin(b.a * 2) * .45 : 6.5 + Math.sin(b.a * 2) * .6;
+  const zOff = LEVEL === 2 ? 22 : LEVEL === 3 ? -9 : -12;
+  b.root.position.set(Math.sin(b.a) * r, y, gp.z + zOff + Math.cos(b.a) * r);
+  b.root.rotation.y = b.a + Math.PI / 2;
+}
 function updateBirds(dt, now) {
   const gp = guru.position, prog = Math.min(1, Math.max(0, (-gp.z - 120) / (LEN - 120)));
-  const active = (LEVEL === 2 ? gp.z > -LEN + 164 && gp.z < -40 : LEVEL === 1 && gp.z < -120 && gp.z > -LEN + 30) && !cut && fState !== 'cut' && !done;
-  birds.forEach((b, i) => { if (i < 2 + Math.round(prog * 2) && active && b.state === 'off') { b.state = 'circle'; b.root.visible = true; } });
+  const active = (
+    LEVEL === 2 ? gp.z > -LEN + 164 && gp.z < -40
+    : LEVEL === 3 ? gp.z < -50 && gp.z > -LEN + 50
+    : LEVEL === 1 && gp.z < -120 && gp.z > -LEN + 30
+  ) && !cut && fState !== 'cut' && !done;
+  const maxBirds = LEVEL === 3 ? 2 : 2 + Math.round(prog * 2);
+  birds.forEach((b, i) => { if (i < maxBirds && active && b.state === 'off') { b.state = 'circle'; b.root.visible = true; } });
   const attacking = birds.filter(b => b.state === 'tele' || b.state === 'dive').length;
   birdTimer -= dt; if (window.__noAuto) birdTimer = 99;
-  if (active && birdTimer <= 0 && attacking < 2) { const c = birds.filter(b => b.state === 'circle'); if (c.length) startDive(c[(Math.random() * c.length) | 0]); birdTimer = THREE.MathUtils.lerp(6.5, 2.2, prog) + Math.random() * 1.5; }
+  const maxAtk = LEVEL === 3 ? 1 : 2;
+  if (active && birdTimer <= 0 && attacking < maxAtk) {
+    const c = birds.filter(b => b.state === 'circle');
+    if (c.length) startDive(c[(Math.random() * c.length) | 0]);
+    birdTimer = (LEVEL === 3 ? THREE.MathUtils.lerp(7.8, 3.6, prog) : THREE.MathUtils.lerp(6.5, 2.2, prog)) + Math.random() * 1.5;
+  }
   invul -= dt; if (invul > 0) guru.visible = Math.floor(invul * 12) % 2 === 0; else guru.visible = true;
   for (const b of birds) {
     if (b.state === 'off') continue;
@@ -628,7 +651,7 @@ function tick(now) {
   updateBirds(dt, now);
   updateSiki(dt, now);
   if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
-  if (LEVEL === 3) updateL3Obstacles();
+  if (LEVEL === 3) { updateL3Obstacles(); updateL3Branches(); }
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
   else if (LEVEL === 3 && fState === 'lead') updateL3FollowFeel(now);
   animateGuru(G, { dt, now, lookCam }, grounded ? speed : 0, running);
@@ -870,6 +893,9 @@ function startLevel3() {
   buildForestTrees(pathW);
   // Roots / rocks / logs on the path (jump over — replaces L1 holes)
   buildForestObstacles(pathW);
+  // Low hanging branches (duck/jump) + forest birds via updateBirds
+  buildForestBranches(pathW);
+  checkpoint = 0;
   // Guru walk controls (reuse L1 tick); Fiškule leads along the path
   guru.position.set(0, 0, 0);
   heading = 0; speed = 0; camPos.set(0, 4, 8);
@@ -879,7 +905,7 @@ function startLevel3() {
   fState = 'lead'; fLeadWait = false; fLost = false; fWaitToast = false; fSpeed = 0; fVy = 0;
   compassEl.classList.add('on'); compassEl.style.opacity = '';
   showToast('Level 3: Následuj Fiškuli 🌲');
-  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length };
+  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, threats: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length, branches: l3Branches.length, checks: CHECKS.length };
   requestAnimationFrame(tick);
 }
 function syncForestDensity() {
@@ -1038,6 +1064,72 @@ function buildForestObstacles(pathW) {
     scene.add(g);
   }
 }
+
+function hitL3Branch(o) {
+  lives--; elL.textContent = '❤ ' + Math.max(0, lives); invul = 1.6;
+  if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([70, 30, 100]);
+  showToast('Větev! -1 život');
+  if (lives <= 0) { endScreen('Konec hry – les tě sklátil'); return; }
+  // respawn at last path checkpoint (soft down, like L1 pit)
+  guru.position.set(0, 0, checkpoint); vy = 0; falling = false; grounded = true; speed = 0; heading = 0; idleTurn = 0;
+  camPos.set(0, 4, checkpoint + 8); knock.set(0, 0, 0); squash = -1;
+}
+function updateL3Branches() {
+  if (invul > 0 || falling || done || !l3Branches.length) return;
+  const gp = guru.position;
+  for (const o of l3Branches) {
+    // hang height: clear by jumping (gp.y >= clearY) or sidestepping
+    if (Math.abs(gp.x - o.x) < o.hw + .28 && Math.abs(gp.z - o.z) < o.hd + .35 && gp.y < o.clearY) {
+      hitL3Branch(o);
+      break;
+    }
+  }
+}
+function buildForestBranches(pathW) {
+  l3Branches = [];
+  let seed = 0xB12A6C4 ^ ((pathW * 131) | 0);
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const half = pathW / 2 - .25;
+  const wood = new THREE.MeshStandardMaterial({ color: 0x3d2918, roughness: .9 });
+  const leaf = new THREE.MeshStandardMaterial({ color: 0x2f5a28, roughness: .95 });
+  const stickG = new THREE.CylinderGeometry(.06, .09, 1, 5);
+  const tuftG = new THREE.ConeGeometry(.35, .7, 5);
+  let z = -55;
+  while (z > -LEN + 60) {
+    const deep = Math.min(1, (-z - 55) / 480);
+    const gap = THREE.MathUtils.lerp(38, 22, deep) * (.9 + rnd() * .35);
+    const side = rnd() < .5 ? -1 : 1;
+    // hangs from berm into path — leaves a dodge lane on the other side
+    const hw = 1.1 + rnd() * .7;
+    const x = side * (half - hw * .35 - rnd() * .4);
+    const clearY = .88 + rnd() * .18; // jumpable (apex ~1.7)
+    const hd = .22 + rnd() * .12;
+    const o = { x, z, hw, hd, clearY, side };
+    l3Branches.push(o);
+    const g = new THREE.Group();
+    const arm = new THREE.Mesh(stickG, wood);
+    arm.scale.set(1, hw * 2.1, 1);
+    arm.rotation.z = Math.PI / 2;
+    arm.position.set(-side * hw * .15, clearY + .05, 0);
+    arm.castShadow = true;
+    g.add(arm);
+    // droop tip + leaf tuft
+    const tip = new THREE.Mesh(stickG, wood);
+    tip.scale.set(.7, .7, .7);
+    tip.rotation.z = Math.PI / 2 + side * .35;
+    tip.position.set(-side * hw * .85, clearY - .12, 0);
+    g.add(tip);
+    const t = new THREE.Mesh(tuftG, leaf);
+    t.rotation.z = Math.PI;
+    t.position.set(-side * hw * .95, clearY - .35, 0);
+    t.scale.set(1.1, .9, .8);
+    g.add(t);
+    g.position.set(o.x, 0, o.z);
+    scene.add(g);
+    z -= gap;
+  }
+}
+
 
 if (LEVEL === 2) startLevel2();
 if (LEVEL === 3) startLevel3();
