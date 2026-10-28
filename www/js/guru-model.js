@@ -456,14 +456,17 @@ export function buildGuru() {
     // šedé boční marky
     head.add(mesh(SH(.2, 24, 18), mat.furGrey, [s * .34, .1, -.1], [.48, 1.05, 1]));
     head.add(mesh(SH(.1, 16, 12), mat.furCrown, [s * .3, .22, -.08], [.55, .7, .6]));
-    // uši — jemnější
+    // uši — jemnější (tracked for idle twitch)
     const ear = new THREE.Group();
     ear.position.set(s * .28, .36, -.02);
     ear.rotation.set(-.1, 0, -s * .32);
+    ear.userData.base = { x: ear.rotation.x, y: ear.rotation.y, z: ear.rotation.z };
     head.add(ear);
     ear.add(mesh(new THREE.ConeGeometry(.2, .46, 6, 1), mat.furCrown, [0, .16, 0], [1, 1, .55], [0, Math.PI / 4, 0]));
     ear.add(mesh(new THREE.ConeGeometry(.12, .32, 6, 1), mat.pink, [0, .13, .055], [1, 1, .3], [0, Math.PI / 4, 0]));
     ear.add(mesh(SH(.065, 14, 12), mat.furDark, [0, .32, -.02], [1.15, .55, .5]));
+    head.ears = head.ears || [];
+    head.ears.push(ear);
     // klapky čepice
     head.add(mesh(new THREE.CapsuleGeometry(.1, .42, 4, 10), mat.leather, [s * .45, -.16, -.02], [.45, 1, 1.05], [0, 0, s * .1]));
     head.add(mesh(new THREE.TorusGeometry(.035, .01, 6, 10), mat.metal, [s * .5, -.42, .02], null, [0, Math.PI / 2, 0]));
@@ -529,16 +532,19 @@ export function animateGuru(g, t, speed, running) {
 
   // body bob: 2× za krok, + idle breath; jemnější než abs(cos)
   const strideBob = (1 - Math.cos(p * 2)) * .5; // 0..1
-  const breath = (1 - mk) * Math.sin(t.now / 680) * .028;
+  const idle = 1 - mk;
+  const breathWave = Math.sin(t.now / 680);
+  const breath = idle * breathWave * .032;
   g.body.position.y = lerp(g.body.position.y, strideBob * .05 * mk + breath, 9);
   // lean / hip sway — soft rates
   const leanX = (running && a > 5 ? .11 : mk * .035);
   g.body.rotation.x = lerp(g.body.rotation.x, leanX, 5);
   g.body.rotation.y = lerp(g.body.rotation.y, sn * .048 * mk, 7);
   g.body.rotation.z = lerp(g.body.rotation.z, sn * .03 * mk, 7);
-  // jemný walk squash/stretch na body (root squash z game3d zůstává na skoky)
+  // walk squash + subtle idle chest breath
   const wsq = Math.sin(p * 2) * .022 * mk;
-  const sx = 1 + wsq * .35, sy = 1 - wsq, sz = 1 + wsq * .35;
+  const bsc = idle * breathWave * .014;
+  const sx = 1 + wsq * .35 + bsc, sy = 1 - wsq + bsc * .6, sz = 1 + wsq * .35 + bsc;
   g.body.scale.x = lerp(g.body.scale.x, sx, 10);
   g.body.scale.y = lerp(g.body.scale.y, sy, 10);
   g.body.scale.z = lerp(g.body.scale.z, sz, 10);
@@ -575,4 +581,20 @@ export function animateGuru(g, t, speed, running) {
   const tailSp = a > 1 ? 100 : 180;
   g.tail.rotation.y = lerp(g.tail.rotation.y, Math.sin(t.now / tailSp) * (.4 + mk * .2), 6);
   g.tail.rotation.x = lerp(g.tail.rotation.x, -.18 - mk * .06, 5);
+
+  // idle ear twitch (Guru + Fiškule via head.ears)
+  if (g.head.ears && g.head.ears.length) {
+    g.head.ears.forEach((ear, i) => {
+      const b = ear.userData.base || (ear.userData.base = {
+        x: ear.rotation.x, y: ear.rotation.y, z: ear.rotation.z,
+      });
+      const side = i ? 1 : -1;
+      const soft = Math.sin(t.now / 920 + i * 1.7) * .035 * idle;
+      // occasional twitch spike
+      const spike = Math.pow(Math.max(0, Math.sin(t.now / 510 + i * 2.3)), 12) * .22 * idle;
+      ear.rotation.z = lerp(ear.rotation.z, b.z + soft * side + spike * side, 10);
+      ear.rotation.x = lerp(ear.rotation.x, b.x + soft * .4 - spike * .15, 10);
+      ear.rotation.y = lerp(ear.rotation.y, b.y + Math.sin(t.now / 1100 + i) * .02 * idle, 8);
+    });
+  }
 }
