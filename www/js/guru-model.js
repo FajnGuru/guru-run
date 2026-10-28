@@ -192,8 +192,11 @@ export function buildGuru() {
     furCrown: std(0x2c2e34, .96, { map: crownTex, roughnessMap: crownTex, bumpMap: crownTex, bumpScale: .11 }),
     pink: std(0xf0b8b0, .9),
     shirt: std(0xf7f7f5, .88),
+    shirtShade: std(0xe4e2dc, .9),
     jeans: std(0x2a4a86, .92),
     jeansDark: std(0x1e3766, .93),
+    jeansMid: std(0x355894, .91),
+    seam: std(0xd8d4cc, .7),
     leather: std(0x6a3b20, .62, { metalness: .08 }),
     leatherDark: std(0x4a2814, .68, { metalness: .06 }),
     metal: std(0xb5a078, .28, { metalness: .78 }),
@@ -230,50 +233,85 @@ export function buildGuru() {
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body);
 
-  // --- trup: košile (lathe, hruškovitý) + jemný objem ramen ---
-  body.add(mesh(lathe([[0, 1.08], [.3, 1.1], [.32, 1.22], [.33, 1.42], [.32, 1.58], [.29, 1.7], [.2, 1.8], [0, 1.83]]), mat.shirt));
-  [-1, 1].forEach(s => body.add(mesh(S(.12, 12, 10), mat.shirt, [s * .28, 1.72, 0], [1.1, .7, .95])));
-  // límec
+  // --- trup: košile s objemem / švy (ne holý válec) ---
+  body.add(mesh(lathe([[0, 1.08], [.3, 1.1], [.325, 1.2], [.34, 1.4], [.335, 1.55], [.31, 1.68], [.24, 1.78], [.14, 1.84], [0, 1.85]], 28), mat.shirt));
+  // ramena + prsní objem
+  [-1, 1].forEach(s => {
+    body.add(mesh(S(.13, 14, 12), mat.shirt, [s * .29, 1.72, .02], [1.15, .75, 1]));
+    body.add(mesh(S(.1, 12, 10), mat.shirtShade, [s * .18, 1.48, .22], [1.1, .85, .7]));
+  });
+  // límec + placket
   [-1, 1].forEach(s => body.add(mesh(new THREE.ConeGeometry(.11, .2, 3), mat.shirt, [s * .09, 1.78, .17], [1, 1, .4], [Math.PI - .3, 0, s * .6])));
   body.add(mesh(new THREE.TorusGeometry(.16, .04, 8, 20), mat.shirt, [0, 1.81, .02], null, [Math.PI / 2 - .25, 0, 0]));
-  for (let i = 0; i < 4; i++) {
-    body.add(mesh(new THREE.CylinderGeometry(.018, .018, .01, 8), std(0xdedede, .45, { metalness: .35 }), [0, 1.68 - i * .15, .325 + (i > 1 ? .01 : 0)], null, [Math.PI / 2, 0, 0]));
+  body.add(mesh(new THREE.BoxGeometry(.07, .68, .025), mat.shirtShade, [0, 1.45, .33]));
+  body.add(mesh(new THREE.BoxGeometry(.01, .68, .008), mat.seam, [-.028, 1.45, .34]));
+  body.add(mesh(new THREE.BoxGeometry(.01, .68, .008), mat.seam, [.028, 1.45, .34]));
+  for (let i = 0; i < 5; i++) {
+    body.add(mesh(new THREE.CylinderGeometry(.016, .016, .012, 8), std(0xd8d8d8, .4, { metalness: .4 }), [0, 1.7 - i * .13, .345], null, [Math.PI / 2, 0, 0]));
   }
-  // opasek
-  body.add(mesh(new THREE.CylinderGeometry(.325, .32, .08, 24), mat.leather, [0, 1.1, 0]));
-  body.add(mesh(new THREE.BoxGeometry(.13, .1, .03), mat.metal, [0, 1.1, .32]));
-  body.add(mesh(new THREE.BoxGeometry(.08, .055, .035), mat.leatherDark, [0, 1.1, .325]));
-  // boky džíny + jemný šev vpředu
-  body.add(mesh(lathe([[0, .82], [.27, .84], [.32, .95], [.325, 1.07], [0, 1.07]]), mat.jeans));
-  body.add(mesh(new THREE.BoxGeometry(.012, .22, .01), mat.stitch, [0, .95, .325]));
+  // náprsní kapsa + boční švy košile
+  body.add(mesh(new THREE.BoxGeometry(.14, .12, .02), mat.shirtShade, [.16, 1.52, .32]));
+  body.add(mesh(new THREE.BoxGeometry(.12, .025, .012), mat.seam, [.16, 1.57, .332]));
+  [-1, 1].forEach(s => body.add(mesh(new THREE.BoxGeometry(.01, .62, .008), mat.seam, [s * .33, 1.42, .05], null, [0, s * .4, 0])));
+  // spodní lem košile přes pásek
+  body.add(mesh(lathe([[.28, 1.12], [.33, 1.14], [.335, 1.2], [.3, 1.22], [0, 1.22]], 24), mat.shirtShade));
+
+  // opasek — vrstvy + poutka (ne holý válec)
+  body.add(mesh(new THREE.TorusGeometry(.312, .038, 8, 28), mat.leather, [0, 1.1, 0], [1, 1, 1.02], [Math.PI / 2, 0, 0]));
+  body.add(mesh(new THREE.TorusGeometry(.318, .018, 6, 28), mat.leatherDark, [0, 1.1, 0], [1, 1, 1.02], [Math.PI / 2, 0, 0]));
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + .15;
+    body.add(mesh(new THREE.BoxGeometry(.04, .1, .025), mat.leatherDark,
+      [Math.sin(a) * .325, 1.1, Math.cos(a) * .325], null, [0, a, 0]));
+  }
+  body.add(mesh(new THREE.BoxGeometry(.14, .1, .04), mat.metal, [0, 1.1, .335]));
+  body.add(mesh(new THREE.BoxGeometry(.05, .08, .02), mat.metal, [0, 1.1, .36], null, [0, 0, Math.PI / 2]));
+  body.add(mesh(new THREE.BoxGeometry(.09, .06, .035), mat.leather, [.12, 1.1, .33]));
+
+  // boky džíny — yoke, kapsy, švy
+  body.add(mesh(lathe([[0, .8], [.28, .82], [.34, .92], [.345, 1.05], [.33, 1.1], [0, 1.1]], 28), mat.jeans));
+  body.add(mesh(lathe([[.2, 1.0], [.34, 1.02], [.345, 1.08], [.3, 1.1], [0, 1.1]], 24), mat.jeansDark)); // yoke
+  body.add(mesh(new THREE.BoxGeometry(.014, .26, .012), mat.stitch, [0, .94, .34])); // fly
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.16, .14, .03), mat.jeansDark, [s * .2, .96, .3], null, [0, 0, s * .08]));
+    body.add(mesh(new THREE.BoxGeometry(.14, .03, .012), mat.stitch, [s * .2, 1.02, .318]));
+    body.add(mesh(new THREE.BoxGeometry(.01, .28, .01), mat.stitch, [s * .34, .94, .02], null, [0, s * .5, 0])); // side seam
+    // zadní kapsa náznak
+    body.add(mesh(new THREE.BoxGeometry(.14, .12, .025), mat.jeansMid, [s * .16, .98, -.3], null, [0, 0, -s * .1]));
+  });
 
   // --- nohy — children[0]=kalhoty, [1]=lem, [2]=foot ---
   const legs = [-1, 1].map(s => {
     const g = new THREE.Group();
     g.position.set(s * .165, .97, 0);
-    g.add(mesh(lathe([[0, 0], [.155, -.02], [.15, -.4], [.155, -.7], [.16, -.78], [0, -.78]], 16), mat.jeans));
-    g.add(mesh(new THREE.TorusGeometry(.155, .02, 6, 16), mat.jeansDark, [0, -.76, 0], null, [Math.PI / 2, 0, 0]));
+    // [0] kalhoty, [1] lem, [2] foot — extras až po foot
+    const pant = mesh(lathe([[0, 0], [.17, -.02], [.165, -.22], [.15, -.42], [.145, -.62], [.155, -.76], [.16, -.8], [0, -.8]], 20), mat.jeans);
+    g.add(pant);
+    g.add(mesh(new THREE.TorusGeometry(.158, .022, 6, 16), mat.jeansDark, [0, -.78, 0], null, [Math.PI / 2, 0, 0]));
     const foot = new THREE.Group();
     foot.position.set(0, -.85, .06);
     g.add(foot);
     foot.add(mesh(S(.21, 16, 12), mat.fur, [0, 0, 0], [1.05, .62, 1.4]));
-    foot.add(mesh(S(.12, 12, 10), mat.furGrey, [0, -.02, -.06], [.9, .45, .7])); // patní chlup
+    foot.add(mesh(S(.12, 12, 10), mat.furGrey, [0, -.02, -.06], [.9, .45, .7]));
     [-1, 0, 1].forEach(t => foot.add(mesh(S(.065, 10, 8), mat.fur, [t * .085, -.02, .23], [1, .8, 1])));
+    // šev + koleno jako děti pant mesh (neposouvají children[2])
+    pant.add(mesh(new THREE.BoxGeometry(.012, .72, .01), mat.stitch, [s * .155, -.38, 0]));
+    pant.add(mesh(S(.09, 10, 8), mat.jeansMid, [0, -.35, .06], [1.15, .7, .9]));
     body.add(g);
     return g;
   });
 
-  // --- paže ---
+  // --- paže — rukávy s lemem / švem ---
   const arms = [-1, 1].map(s => {
     const g = new THREE.Group();
     g.position.set(s * .31, 1.7, 0);
     g.rotation.z = s * .14;
-    g.add(mesh(lathe([[0, 0], [.115, -.02], [.11, -.3], [.105, -.6], [.12, -.64], [0, -.64]], 16), mat.shirt));
-    g.add(mesh(new THREE.TorusGeometry(.11, .02, 6, 14), mat.shirt, [0, -.62, 0], null, [Math.PI / 2, 0, 0]));
+    g.add(mesh(lathe([[0, 0], [.12, -.02], [.115, -.28], [.11, -.52], [.12, -.62], [.125, -.66], [0, -.66]], 18), mat.shirt));
+    g.add(mesh(new THREE.TorusGeometry(.118, .02, 6, 14), mat.shirtShade, [0, -.64, 0], null, [Math.PI / 2, 0, 0]));
+    g.add(mesh(new THREE.BoxGeometry(.01, .55, .008), mat.seam, [s * .1, -.32, 0]));
     const hand = mesh(S(.13, 14, 12), mat.fur, [0, -.76, .02], [.95, 1.05, .85]);
     g.add(hand);
     g.add(mesh(S(.055, 8, 6), mat.fur, [-s * .09, -.71, .08]));
-    // drobné chlupy u zápěstí
     g.add(mesh(S(.04, 8, 6), mat.furGrey, [s * .04, -.68, .06], [1, .7, .8]));
     body.add(g);
     return g;
