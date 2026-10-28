@@ -212,50 +212,65 @@ export function buildFiskule() {
   });
   arms[0].rotation.set(-1.1, 0, -.35);
 
-  // --- hlava: jemnější geo + canvas face/iris, měkčí líce/uši/oči ---
+  // --- hlava v2: turnaround ears/cheeks/eyes (fiskule-ref) ---
   const head = new THREE.Group();
   head.position.set(0, 1.64, .02);
   head.scale.setScalar(1.2);
   body.add(head);
-  // koruna / lebka — vyšší segmentace
-  head.add(mesh(SH(.36, 36, 28), mat.fur, [0, .02, -.02], [1.08, 1.02, 1.02]));
-  // široké měkké líce (bulbous cheeks z turnaroundu)
+  // skull — slightly taller, rounded crown
+  head.add(mesh(SH(.36, 36, 28), mat.fur, [0, .04, -.02], [1.05, 1.08, 1.02]));
+  // prominent fluffy cheeks — widen lower face (turnaround silhouette)
   [-1, 1].forEach(s => {
-    head.add(mesh(SH(.175, 24, 18), mat.fur, [s * .28, -.04, .08], [.85, .95, .9]));
-    head.add(mesh(SH(.12, 20, 16), mat.furFace, [s * .22, -.08, .2], [.7, .75, .65]));
+    head.add(mesh(SH(.2, 28, 22), mat.fur, [s * .3, -.06, .06], [.95, 1.05, .95]));
+    head.add(mesh(SH(.14, 24, 18), mat.fur, [s * .32, -.12, .12], [.8, .9, .85]));
+    head.add(mesh(SH(.13, 22, 16), mat.furFace, [s * .24, -.1, .22], [.75, .8, .7]));
   });
-  // cream muzzle + face map
-  head.add(mesh(SH(.22, 28, 22), mat.furFace, [0, -.14, .2], [1.2, .85, 1.15]));
-  head.add(mesh(SH(.12, 20, 16), mat.furLight, [0, -.1, .32], [1.1, .7, .85]));
-  // nos
-  head.add(mesh(SH(.05, 16, 12), mat.nose, [0, -.06, .4], [1.4, .95, 1]));
-  head.add(mesh(SH(.014, 8, 6), mat.hl, [-.014, -.045, .44]));
-  // ústa
-  head.add(mesh(new THREE.TorusGeometry(.075, .012, 6, 16, Math.PI * .85), mat.mouth, [0, -.18, .34], null, [0, 0, Math.PI * 1.1]));
+  // cream muzzle + chin taper
+  head.add(mesh(SH(.23, 28, 22), mat.furFace, [0, -.15, .2], [1.25, .88, 1.18]));
+  head.add(mesh(SH(.13, 22, 16), mat.furLight, [0, -.12, .34], [1.15, .72, .9]));
+  head.add(mesh(SH(.1, 18, 14), mat.furFace, [0, -.22, .18], [1.05, .7, .95]));
+  // nose + philtrum hint
+  head.add(mesh(SH(.048, 16, 12), mat.nose, [0, -.07, .42], [1.45, .9, 1]));
+  head.add(mesh(SH(.014, 8, 6), mat.hl, [-.014, -.055, .455]));
+  head.add(mesh(new THREE.BoxGeometry(.012, .06, .01), mat.mouth, [0, -.12, .4]));
+  // mouth
+  head.add(mesh(new THREE.TorusGeometry(.07, .011, 6, 16, Math.PI * .8), mat.mouth, [0, -.2, .36], null, [0, 0, Math.PI * 1.1]));
 
   [-1, 1].forEach(s => {
-    // oči — rim + větší bílek + iris mapa
+    // almond doe-eyes — wider X, softer Y, slight outer-down tilt
     const e = new THREE.Group();
-    e.position.set(s * .14, .04, .28);
-    e.rotation.y = s * .32;
+    e.position.set(s * .15, .05, .3);
+    e.rotation.set(-.06, s * .28, s * .12);
     head.add(e);
-    e.add(mesh(SH(.07, 16, 12), mat.eyeRim, [0, 0, -.012], [1.3, 1.3, .5]));
-    e.add(mesh(SH(.11, 24, 18), mat.eyeW, [0, 0, 0], [1.08, 1.15, .62]));
-    e.add(mesh(SH(.072, 20, 16), mat.iris, [0, -.004, .04], [1.02, 1.05, .48]));
-    e.add(mesh(SH(.036, 12, 10), mat.pupil, [0, -.004, .062], [1, 1.05, .42]));
-    e.add(mesh(SH(.018, 8, 6), mat.hl, [s * -.016 + .01, .028, .075]));
-    e.add(mesh(SH(.01, 6, 6), mat.hl, [s * .018, -.014, .072]));
-    // obočí
-    head.add(mesh(new THREE.CapsuleGeometry(.016, .08, 3, 6), mat.furDark, [s * .14, .16, .3], null, [0, 0, s * 1.25]));
-    // dlouhé uši — jemnější kapsle + gradient tip
+    e.add(mesh(SH(.065, 16, 12), mat.eyeRim, [0, 0, -.014], [1.45, 1.15, .45]));
+    e.add(mesh(SH(.105, 26, 20), mat.eyeW, [0, 0, 0], [1.25, 1.05, .55]));
+    e.add(mesh(SH(.068, 22, 16), mat.iris, [s * .008, -.006, .038], [1.05, 1.0, .45]));
+    e.add(mesh(SH(.034, 14, 10), mat.pupil, [s * .008, -.006, .058], [1, 1.02, .4]));
+    e.add(mesh(SH(.02, 8, 6), mat.hl, [s * -.02 + .012, .026, .07]));
+    e.add(mesh(SH(.01, 6, 6), mat.hl, [s * .02, -.012, .068]));
+    // soft brow arc
+    head.add(mesh(new THREE.CapsuleGeometry(.014, .09, 3, 6), mat.furDark, [s * .15, .155, .32], null, [0, 0, s * 1.15]));
+    // long upright ears — slight outward tip curve, pink inner, dark tips
     const ear = new THREE.Group();
-    ear.position.set(s * .14, .28, -.04);
-    ear.rotation.set(-.1, s * .08, -s * .22);
+    ear.position.set(s * .12, .3, -.06);
+    ear.rotation.set(-.08, s * .12, -s * .18);
     head.add(ear);
-    ear.add(mesh(new THREE.CapsuleGeometry(.115, .64, 6, 14), mat.fur, [0, .42, 0], [1, 1, .38]));
-    ear.add(mesh(new THREE.CapsuleGeometry(.078, .52, 5, 12), mat.pink, [0, .4, .038], [1, 1, .22]));
-    ear.add(mesh(SH(.13, 16, 12), mat.furDark, [0, .8, 0], [1, .9, .38]));
-    ear.add(mesh(SH(.08, 12, 10), mat.furDark, [0, .9, 0], [.85, .7, .3]));
+    // base fluff at skull
+    ear.add(mesh(SH(.12, 16, 12), mat.fur, [0, .06, 0], [1.1, .7, .55]));
+    // main shaft — taller, flatter depth
+    ear.add(mesh(new THREE.CapsuleGeometry(.105, .78, 8, 16), mat.fur, [0, .48, 0], [.95, 1, .32]));
+    // tip bends slightly outward
+    const tip = new THREE.Group();
+    tip.position.set(0, .9, 0);
+    tip.rotation.z = -s * .28;
+    tip.rotation.x = -.12;
+    ear.add(tip);
+    tip.add(mesh(new THREE.CapsuleGeometry(.095, .18, 6, 12), mat.fur, [0, .08, 0], [.9, 1, .3]));
+    tip.add(mesh(SH(.1, 14, 12), mat.furDark, [0, .16, 0], [1.05, .95, .35]));
+    tip.add(mesh(SH(.06, 12, 10), mat.furDark, [0, .26, 0], [.9, .75, .28]));
+    // pink inner canal (peach from turnaround)
+    ear.add(mesh(new THREE.CapsuleGeometry(.068, .62, 6, 12), mat.pink, [0, .46, .04], [.95, 1, .18]));
+    ear.add(mesh(SH(.055, 12, 10), mat.pink, [0, .12, .035], [1.1, .8, .35]));
     head.ears = head.ears || [];
     head.ears.push(ear);
   });
