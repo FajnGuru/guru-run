@@ -1,4 +1,4 @@
-// Procedurální model Guru (husky) — head refine: canvas fur/muzzle/iris + jemnější geo hlavy
+// Procedurální model Guru (husky) — PR1 ears: inner canal, fluff clumps, soft rim + idle twitch
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
@@ -456,15 +456,31 @@ export function buildGuru() {
     // šedé boční marky
     head.add(mesh(SH(.2, 24, 18), mat.furGrey, [s * .34, .1, -.1], [.48, 1.05, 1]));
     head.add(mesh(SH(.1, 16, 12), mat.furCrown, [s * .3, .22, -.08], [.55, .7, .6]));
-    // uši — jemnější (tracked for idle twitch)
+    // uši v2 — outer shell, soft rim, pink canal, base/tip fluff (tracked for idle twitch)
     const ear = new THREE.Group();
     ear.position.set(s * .28, .36, -.02);
     ear.rotation.set(-.1, 0, -s * .32);
     ear.userData.base = { x: ear.rotation.x, y: ear.rotation.y, z: ear.rotation.z };
     head.add(ear);
-    ear.add(mesh(new THREE.ConeGeometry(.2, .46, 6, 1), mat.furCrown, [0, .16, 0], [1, 1, .55], [0, Math.PI / 4, 0]));
-    ear.add(mesh(new THREE.ConeGeometry(.12, .32, 6, 1), mat.pink, [0, .13, .055], [1, 1, .3], [0, Math.PI / 4, 0]));
-    ear.add(mesh(SH(.065, 14, 12), mat.furDark, [0, .32, -.02], [1.15, .55, .5]));
+    // outer shell (slightly taller / thinner husky triangle)
+    ear.add(mesh(new THREE.ConeGeometry(.195, .5, 7, 1), mat.furCrown, [0, .17, 0], [1.05, 1, .52], [0, Math.PI / 4, 0]));
+    // soft dark rim along edge (reads thickness from side)
+    ear.add(mesh(new THREE.ConeGeometry(.17, .42, 7, 1), mat.furDark, [0, .155, -.02], [1.08, 1, .28], [0, Math.PI / 4, 0]));
+    // pink inner + deeper canal fold
+    ear.add(mesh(new THREE.ConeGeometry(.115, .34, 6, 1), mat.pink, [0, .14, .055], [1.05, 1, .28], [0, Math.PI / 4, 0]));
+    ear.add(mesh(new THREE.ConeGeometry(.055, .18, 5, 1), std(0xd89890, .85), [0, .1, .07], [1, 1, .35], [0, Math.PI / 4, 0]));
+    // canal shadow pocket near base
+    ear.add(mesh(SH(.04, 10, 8), std(0xc07870, .9), [0, .06, .06], [1.2, .7, .45]));
+    // tip tuft
+    ear.add(mesh(SH(.055, 12, 10), mat.furDark, [0, .4, -.015], [1.2, .5, .55]));
+    ear.add(mesh(SH(.035, 10, 8), mat.furGrey, [s * .02, .38, .01], [.9, .55, .5]));
+    // base fluff where ear meets crown (mobile-friendly clumps)
+    ear.add(mesh(SH(.07, 12, 10), mat.furCrown, [0, .02, -.02], [1.35, .7, .85]));
+    ear.add(mesh(SH(.045, 10, 8), mat.furHead, [s * -.04, .04, .03], [1.1, .75, .7]));
+    ear.add(mesh(SH(.04, 10, 8), mat.furGrey, [s * .05, .05, .02], [1, .7, .65]));
+    // leading-edge rim fluff (soft silhouette)
+    ear.add(mesh(SH(.032, 8, 6), mat.furDark, [s * .08, .22, .02], [.85, 1.1, .55]));
+    ear.add(mesh(SH(.028, 8, 6), mat.furDark, [s * -.07, .2, .015], [.8, 1, .5]));
     head.ears = head.ears || [];
     head.ears.push(ear);
     // klapky čepice
@@ -582,19 +598,20 @@ export function animateGuru(g, t, speed, running) {
   g.tail.rotation.y = lerp(g.tail.rotation.y, Math.sin(t.now / tailSp) * (.4 + mk * .2), 6);
   g.tail.rotation.x = lerp(g.tail.rotation.x, -.18 - mk * .06, 5);
 
-  // idle ear twitch (Guru + Fiškule via head.ears)
+  // idle ear twitch (Guru + Fiškule via head.ears) — soft sway + rare spike, damped while running
   if (g.head.ears && g.head.ears.length) {
     g.head.ears.forEach((ear, i) => {
       const b = ear.userData.base || (ear.userData.base = {
         x: ear.rotation.x, y: ear.rotation.y, z: ear.rotation.z,
       });
       const side = i ? 1 : -1;
-      const soft = Math.sin(t.now / 920 + i * 1.7) * .035 * idle;
-      // occasional twitch spike
-      const spike = Math.pow(Math.max(0, Math.sin(t.now / 510 + i * 2.3)), 12) * .22 * idle;
+      const idleAmt = idle * idle; // stronger only when nearly still
+      const soft = Math.sin(t.now / 980 + i * 1.7) * .04 * (idleAmt + mk * .12);
+      // occasional twitch spike (rarer / softer while moving)
+      const spike = Math.pow(Math.max(0, Math.sin(t.now / 560 + i * 2.3)), 14) * (.18 * idleAmt + .04 * mk);
       ear.rotation.z = lerp(ear.rotation.z, b.z + soft * side + spike * side, 10);
-      ear.rotation.x = lerp(ear.rotation.x, b.x + soft * .4 - spike * .15, 10);
-      ear.rotation.y = lerp(ear.rotation.y, b.y + Math.sin(t.now / 1100 + i) * .02 * idle, 8);
+      ear.rotation.x = lerp(ear.rotation.x, b.x + soft * .45 - spike * .12, 10);
+      ear.rotation.y = lerp(ear.rotation.y, b.y + Math.sin(t.now / 1180 + i) * .025 * idleAmt, 8);
     });
   }
 }
