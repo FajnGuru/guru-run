@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — PR7 nose/mouth: wet HL + finer smile
+// Procedurální model Fiškule (zaječice) — PR8 scarf+vest: swaying tails, buttons/pockets
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -159,11 +159,15 @@ export function buildFiskule() {
     vest: std(0x6a7148, .9),
     vestDark: std(0x4e5436, .92),
     vestLight: std(0x7a8256, .88),
+    vestSeam: std(0x3a4028, .95),
+    button: std(0xe8d48a, .28, { metalness: .7, emissive: 0x3a2a08, emissiveIntensity: .12 }),
+    buttonRim: std(0xa07828, .32, { metalness: .8 }),
     shorts: std(0xa84832, .9),
     shortsDark: std(0x7a3424, .92),
     shortsLight: std(0xb85a42, .88),
     scarf: std(0xb81f1a, .84),
     scarfDark: std(0x8a1612, .88),
+    scarfDeep: std(0x6a100e, .9),
     leather: std(0x5a3a22, .65, { metalness: .08 }),
     metal: std(0xc4a060, .3, { metalness: .72 }),
     brass: std(0xe0b84a, .22, { metalness: .9, emissive: 0x3a2a08, emissiveIntensity: .15 }),
@@ -207,32 +211,84 @@ export function buildFiskule() {
 
   // trup: tan shirt + olive utility vest (turnaround volume)
   body.add(mesh(lathe([[0, .78], [.28, .8], [.3, .95], [.3, 1.12], [.27, 1.28], [.17, 1.38], [0, 1.4]], 24), mat.shirt));
-  // vest shell — slightly thicker/boxier utility silhouette
+  // vest shell v2 — thicker utility silhouette + side seams
   body.add(mesh(lathe([[.0, .78], [.32, .8], [.335, .96], [.335, 1.14], [.3, 1.28], [.22, 1.35], [.02, 1.35]], 24), mat.vest, [0, 0, -.008], [1, 1, .97]));
-  // open placket showing shirt
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.014, .5, .01), mat.vestSeam, [s * .32, 1.05, .08], null, [0, s * .35, 0]));
+  });
+  // open placket showing shirt + stitch rails
   body.add(mesh(new THREE.BoxGeometry(.08, .42, .04), mat.shirt, [0, 1.08, .3], null, [-.04, 0, 0]));
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.012, .4, .008), mat.vestSeam, [s * .038, 1.08, .318]));
+  });
   // collar flaps
   [-1, 1].forEach(s => {
     body.add(mesh(new THREE.BoxGeometry(.14, .06, .04), mat.vestLight, [s * .1, 1.34, .22], null, [.35, 0, s * -.5]));
+    body.add(mesh(new THREE.BoxGeometry(.12, .012, .008), mat.vestSeam, [s * .1, 1.318, .235], null, [.35, 0, s * -.5]));
   });
-  // chest pockets with flaps + brass snaps
+  // chest pockets v2 — bag, flap, stitch frame, snap
+  const addVestBtn = (x, y, z, r = .014) => {
+    body.add(mesh(new THREE.CylinderGeometry(r * 1.2, r * 1.2, .007, 8), mat.buttonRim, [x, y, z], null, [Math.PI / 2, 0, 0]));
+    body.add(mesh(new THREE.CylinderGeometry(r, r, .011, 8), mat.button, [x, y, z + .004], null, [Math.PI / 2, 0, 0]));
+    body.add(mesh(SH(r * .32, 5, 4), mat.hlSoft, [x - r * .22, y + r * .18, z + .01]));
+  };
   [-1, 1].forEach(s => {
-    body.add(mesh(new THREE.BoxGeometry(.15, .13, .045), mat.vestDark, [s * .175, .94, .31]));
-    body.add(mesh(new THREE.BoxGeometry(.155, .045, .03), mat.vestLight, [s * .175, 1.015, .335], null, [.15, 0, 0]));
-    body.add(mesh(new THREE.CylinderGeometry(.014, .014, .012, 8), mat.brass, [s * .175, .975, .35], null, [Math.PI / 2, 0, 0]));
+    const px = s * .175;
+    body.add(mesh(new THREE.BoxGeometry(.155, .14, .05), mat.vestDark, [px, .94, .31]));
+    // stitch frame
+    body.add(mesh(new THREE.BoxGeometry(.148, .012, .008), mat.vestSeam, [px, .875, .338]));
+    [-1, 1].forEach(ss => body.add(mesh(new THREE.BoxGeometry(.01, .125, .008), mat.vestSeam, [px + ss * .068, .94, .338])));
+    // flap + under-shadow
+    body.add(mesh(new THREE.BoxGeometry(.16, .048, .032), mat.vestLight, [px, 1.02, .34], null, [.18, 0, 0]));
+    body.add(mesh(new THREE.BoxGeometry(.15, .014, .01), mat.vestSeam, [px, .995, .352], null, [.18, 0, 0]));
+    addVestBtn(px, .995, .355, .012);
   });
-  // center brass buttons
-  [1.18, 1.08, .98].forEach(y => {
-    body.add(mesh(new THREE.CylinderGeometry(.012, .012, .01, 8), mat.brass, [0, y, .32], null, [Math.PI / 2, 0, 0]));
+  // lower slash pockets hint
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.12, .018, .02), mat.vestDark, [s * .2, .82, .3], null, [0, 0, s * .4]));
+    body.add(mesh(new THREE.BoxGeometry(.1, .01, .008), mat.vestSeam, [s * .2, .825, .31], null, [0, 0, s * .4]));
   });
-  // red bandana — wrapped under vest collar + front knot/tails
+  // center placket buttons (rim + face)
+  [1.22, 1.12, 1.02, .92].forEach(y => addVestBtn(0, y, .325, .013));
+  // red bandana wrap (static) + swaying front knot/tails group
   body.add(mesh(new THREE.TorusGeometry(.185, .055, 10, 22), mat.scarf, [0, 1.36, .02], [1.05, 1, .95], [Math.PI / 2, 0, 0]));
   body.add(mesh(new THREE.TorusGeometry(.16, .04, 8, 18), mat.scarfDark, [0, 1.35, .04], [1, 1, .9], [Math.PI / 2, .1, 0]));
-  // draped front triangle + knot
-  body.add(mesh(new THREE.ConeGeometry(.16, .28, 3), mat.scarf, [0, 1.24, .3], [1.1, 1, .28], [Math.PI + .3, 0, 0]));
-  body.add(mesh(new THREE.SphereGeometry(.045, 10, 8), mat.scarfDark, [.02, 1.3, .32]));
-  body.add(mesh(new THREE.BoxGeometry(.05, .1, .035), mat.scarf, [.1, 1.2, .32], null, [0, 0, .45]));
-  body.add(mesh(new THREE.BoxGeometry(.045, .09, .03), mat.scarfDark, [-.06, 1.18, .31], null, [0, 0, -.35]));
+  const scarf = new THREE.Group();
+  scarf.position.set(0, 1.28, .3);
+  scarf.userData.base = { x: 0, y: 0, z: 0 };
+  body.add(scarf);
+  body.scarf = scarf;
+  // draped front triangle
+  scarf.add(mesh(new THREE.ConeGeometry(.16, .26, 3), mat.scarf, [0, -.04, .02], [1.1, 1, .28], [Math.PI + .25, 0, 0]));
+  scarf.add(mesh(new THREE.ConeGeometry(.1, .14, 3), mat.scarfDark, [0, -.02, .04], [1, 1, .35], [Math.PI + .15, 0, 0]));
+  // knot
+  scarf.add(mesh(new THREE.SphereGeometry(.048, 10, 8), mat.scarfDark, [.02, .02, .04]));
+  scarf.add(mesh(new THREE.SphereGeometry(.03, 8, 6), mat.scarfDeep, [-.01, .01, .05]));
+  // dangling tails (animated in animateGuru)
+  scarf.tails = [];
+  [
+    [.1, -.02, .04, .55, .12, .14],
+    [-.07, -.04, .03, -.4, .1, .12],
+  ].forEach(([tx, ty, tz, rz, w, h], i) => {
+    const tail = new THREE.Group();
+    tail.position.set(tx, ty, tz);
+    tail.rotation.z = rz;
+    tail.userData.base = { x: 0, y: 0, z: rz };
+    scarf.add(tail);
+    scarf.tails.push(tail);
+    const matTail = i ? mat.scarfDark : mat.scarf;
+    tail.add(mesh(new THREE.BoxGeometry(w * .45, h, .03), matTail, [0, -h * .45, 0]));
+    tail.add(mesh(new THREE.BoxGeometry(w * .35, h * .55, .024), mat.scarfDeep, [0, -h * .95, 0]));
+    // tip flutter child
+    const tip = new THREE.Group();
+    tip.position.set(0, -h * 1.25, 0);
+    tip.userData.baseX = 0;
+    tip.userData.baseZ = 0;
+    tail.add(tip);
+    tip.add(mesh(new THREE.BoxGeometry(w * .28, .05, .02), matTail, [0, -.02, 0]));
+    tip.add(mesh(new THREE.ConeGeometry(.028, .06, 3), mat.scarfDeep, [0, -.06, 0], [1, 1, .5]));
+    tail.tip = tip;
+  });
   // terracotta cargo shorts — fuller hips + waistband
   body.add(mesh(lathe([[0, .48], [.32, .5], [.36, .62], [.355, .78], [.32, .84], [0, .84]], 24), mat.shorts));
   body.add(mesh(new THREE.CylinderGeometry(.33, .33, .055, 24), mat.shortsDark, [0, .82, 0]));

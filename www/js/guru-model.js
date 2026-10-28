@@ -1,4 +1,4 @@
-// Procedurální model Guru (husky) — PR5 outfit: buttons, pockets, readable seams
+// Procedurální model Guru (husky) — PR8: shared animateGuru scarf sway hook
 // API: buildGuru() → { root, body, head, arms, legs, tail }; animateGuru(g, t, speed, running)
 // t.lookCam = true → jemný glance hlavy (tělo otáčí game3d); Fiškule/cutscény nechávají false/undefined
 // DŮLEŽITÉ: legs[i].children[2] musí zůstat foot group (animateGuru + motorbike).
@@ -773,5 +773,33 @@ export function animateGuru(g, t, speed, running) {
         ear.tip.rotation.x = lerp(ear.tip.rotation.x, tbx + soft * .3 - spike * .1, 9);
       }
     });
+  }
+
+  // optional scarf sway (Fiškule bandana tails via body.scarf)
+  if (g.body.scarf) {
+    const sc = g.body.scarf;
+    const b = sc.userData.base || (sc.userData.base = { x: 0, y: 0, z: 0 });
+    const runBoost = running ? 1.2 : 1;
+    const sway = Math.sin(t.now / 420) * (.04 + mk * .08) * runBoost;
+    const sway2 = Math.sin(t.now / 610 + .7) * (.025 + mk * .05);
+    sc.rotation.x = lerp(sc.rotation.x, b.x + sway + idle * Math.sin(t.now / 900) * .02, 7);
+    sc.rotation.z = lerp(sc.rotation.z, b.z + sway2, 7);
+    sc.rotation.y = lerp(sc.rotation.y, b.y + sn * .03 * mk, 6);
+    if (sc.tails) {
+      sc.tails.forEach((tail, i) => {
+        const tb = tail.userData.base || { x: 0, y: 0, z: 0 };
+        const lag = i * .9;
+        const w = Math.sin(t.now / 380 - lag);
+        const amp = (.12 + mk * .22) * runBoost;
+        tail.rotation.x = lerp(tail.rotation.x, tb.x + w * amp + idle * Math.sin(t.now / 720 + i) * .05, 8);
+        tail.rotation.z = lerp(tail.rotation.z, tb.z + w * .08 * (i ? -1 : 1), 8);
+        if (tail.tip) {
+          const tip = tail.tip;
+          const tbx = tip.userData.baseX ?? 0;
+          tip.rotation.x = lerp(tip.rotation.x, tbx + Math.sin(t.now / 280 - lag) * (.18 + mk * .15), 9);
+          tip.rotation.z = lerp(tip.rotation.z, Math.sin(t.now / 320 + i) * (.1 + mk * .08), 9);
+        }
+      });
+    }
   }
 }
