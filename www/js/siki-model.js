@@ -1,7 +1,8 @@
-// Procedurální model SIKI (klokan) – PR4: džínové lacláče (bib, straps, rolled cuffs)
-// API: buildSiki() → { root, body, head, arms, legs, tail }; animateSiki(g, t, opts?)
+// Procedurální model SIKI (klokan) – PR5: pracovní opasek (pouches, wrench, pliers)
+// API: buildSiki() → { root, body, head, arms, legs, tail, belt }; animateSiki(g, t, opts?)
 // DŮLEŽITÉ: legs[i].children[2] = foot group (motorbike pose).
 // Tail.segs = cascade segments; bike pose sets tail.rotation.x ≈ .25 (over seat).
+// belt = leather tool belt group; animateSiki jiggles it lightly when bike/speed.
 import * as THREE from 'three';
 
 function textTex(text, w, h, font, color = '#fff', opts = {}) {
@@ -178,8 +179,14 @@ export function buildSiki() {
     stitch: std(0xc9883a, .7),
     strap: std(0x7a4a28, .75),
     strapDark: std(0x5a3218, .8),
-    leather: std(0x8a5530, .6), leatherDark: std(0x5c3418, .6),
-    steel: std(0xb8bec6, .3, { metalness: .8 }), handle: std(0xc0282d, .5),
+    leather: std(0x8a5530, .62),
+    leatherMid: std(0x6e4224, .68),
+    leatherDark: std(0x5c3418, .7),
+    leatherLight: std(0xa66a3a, .55),
+    steel: std(0xb8bec6, .28, { metalness: .85 }),
+    steelDark: std(0x7a828c, .32, { metalness: .75 }),
+    handle: std(0xc0282d, .48),
+    handleDeep: std(0x8a1a1e, .55),
     nose: std(0x1a1414, .32, { metalness: .1, emissive: 0x1a1010, emissiveIntensity: .05 }),
     noseWet: std(0x0a0808, .14, { metalness: .2 }),
     eyeW: std(0xffffff, .28),
@@ -262,16 +269,106 @@ export function buildSiki() {
   [-1, 1].forEach(s => {
     body.add(mesh(new THREE.BoxGeometry(.012, .35, .01), mat.stitch, [s * .47, 1.2, .05], null, [0, 0, 0]));
   });
-  // pracovní opasek s brašnami a nářadím
-  body.add(mesh(new THREE.CylinderGeometry(.47, .47, .1, 24), mat.leather, [0, 1.3, 0]));
-  body.add(mesh(new THREE.BoxGeometry(.12, .1, .03), mat.brass, [0, 1.3, .47]));
-  [[-1, .62], [1, .62], [-1, -.3], [1, -.3]].forEach(([s, a]) => {
-    const ang = s * (Math.PI / 2 - a);
-    const px = Math.sin(ang) * .49, pz = Math.cos(ang) * .49;
-    const p = mesh(new THREE.BoxGeometry(.18, .24, .09), mat.leatherDark, [px, 1.17, pz], null, [0, ang, 0]); body.add(p);
-    const tool = mesh(new THREE.BoxGeometry(.035, .22, .02), mat.steel, [px, 1.36, pz], null, [0, ang, .15 * s]); body.add(tool);
-    body.add(mesh(new THREE.BoxGeometry(.05, .1, .03), mat.handle, [px + .05 * Math.cos(ang), 1.33, pz - .05 * Math.sin(ang)], null, [0, ang, 0]));
+  // pracovní opasek v2 – brown leather tool belt (pouches, wrench, pliers)
+  const belt = new THREE.Group();
+  belt.position.set(0, 1.3, 0);
+  belt.userData.baseY = 1.3;
+  body.add(belt);
+  // main strap
+  belt.add(mesh(new THREE.CylinderGeometry(.48, .48, .09, 24), mat.leather, [0, 0, 0]));
+  // top edge stitch hint
+  belt.add(mesh(new THREE.TorusGeometry(.485, .008, 4, 24), mat.leatherLight, [0, .04, 0], null, [Math.PI / 2, 0, 0]));
+  belt.add(mesh(new THREE.TorusGeometry(.485, .008, 4, 24), mat.leatherDark, [0, -.04, 0], null, [Math.PI / 2, 0, 0]));
+  // front buckle (silver/brass plate + prong)
+  belt.add(mesh(new THREE.BoxGeometry(.14, .1, .035), mat.steel, [0, 0, .485]));
+  belt.add(mesh(new THREE.BoxGeometry(.1, .06, .02), mat.brass, [0, 0, .505]));
+  belt.add(mesh(new THREE.BoxGeometry(.02, .07, .015), mat.steelDark, [0, 0, .515]));
+  // belt loops (keepers)
+  [-1, 1].forEach(s => {
+    belt.add(mesh(new THREE.BoxGeometry(.04, .1, .04), mat.leatherMid, [s * .12, 0, .48]));
   });
+
+  /** Hip pouch with flap — local coords, yaw toward outside. */
+  const makePouch = (x, z, yaw) => {
+    const g = new THREE.Group();
+    g.position.set(x, -.14, z);
+    g.rotation.y = yaw;
+    // body
+    g.add(mesh(new THREE.BoxGeometry(.2, .26, .11), mat.leatherDark, [0, 0, 0]));
+    // front face slightly lighter
+    g.add(mesh(new THREE.BoxGeometry(.18, .22, .02), mat.leatherMid, [0, -.01, .06]));
+    // flap
+    g.add(mesh(new THREE.BoxGeometry(.2, .1, .12), mat.leather, [0, .12, .01], null, [-.35, 0, 0]));
+    // flap snap
+    g.add(mesh(new THREE.CylinderGeometry(.02, .02, .015, 8), mat.brass, [0, .06, .08], null, [Math.PI / 2, 0, 0]));
+    // side stitch
+    g.add(mesh(new THREE.BoxGeometry(.015, .2, .01), mat.leatherLight, [-.095, 0, .05]));
+    g.add(mesh(new THREE.BoxGeometry(.015, .2, .01), mat.leatherLight, [.095, 0, .05]));
+    belt.add(g);
+    return g;
+  };
+  // front-side hip pouches (refs: one each hip)
+  makePouch(-.42, .28, -Math.PI * .35);
+  makePouch(.42, .28, Math.PI * .35);
+  // rear small pouch / spare
+  makePouch(-.28, -.4, Math.PI * .75);
+  makePouch(.28, -.4, -Math.PI * .75);
+
+  /** Adjustable / open-end wrench — silver. */
+  const makeWrench = (x, z, yaw, tipUp = .18) => {
+    const g = new THREE.Group();
+    g.position.set(x, tipUp * .35, z);
+    g.rotation.y = yaw;
+    g.rotation.z = .12;
+    // handle
+    g.add(mesh(new THREE.BoxGeometry(.035, .28, .02), mat.steel, [0, -.02, 0]));
+    g.add(mesh(new THREE.BoxGeometry(.045, .04, .025), mat.steelDark, [0, -.14, 0]));
+    // open jaw head
+    g.add(mesh(new THREE.BoxGeometry(.09, .06, .025), mat.steel, [0, .14, 0]));
+    g.add(mesh(new THREE.BoxGeometry(.03, .05, .02), mat.steelDark, [-.03, .17, 0]));
+    g.add(mesh(new THREE.BoxGeometry(.025, .04, .02), mat.steel, [.035, .16, 0]));
+    // adjustment knob (crescent)
+    g.add(mesh(new THREE.CylinderGeometry(.018, .018, .03, 8), mat.steelDark, [.02, .12, .02], null, [0, 0, Math.PI / 2]));
+    belt.add(g);
+    return g;
+  };
+  /** Combination pliers — red handles + steel jaws. */
+  const makePliers = (x, z, yaw) => {
+    const g = new THREE.Group();
+    g.position.set(x, .08, z);
+    g.rotation.y = yaw;
+    g.rotation.z = -.08;
+    // red handles (spread)
+    g.add(mesh(new THREE.BoxGeometry(.04, .2, .035), mat.handle, [-.03, -.06, 0], null, [0, 0, .18]));
+    g.add(mesh(new THREE.BoxGeometry(.04, .2, .035), mat.handle, [.03, -.06, 0], null, [0, 0, -.18]));
+    g.add(mesh(new THREE.BoxGeometry(.035, .06, .03), mat.handleDeep, [-.045, -.14, 0], null, [0, 0, .18]));
+    g.add(mesh(new THREE.BoxGeometry(.035, .06, .03), mat.handleDeep, [.045, -.14, 0], null, [0, 0, -.18]));
+    // pivot
+    g.add(mesh(new THREE.CylinderGeometry(.025, .025, .04, 8), mat.steelDark, [0, .04, 0], null, [Math.PI / 2, 0, 0]));
+    // jaws
+    g.add(mesh(new THREE.BoxGeometry(.035, .1, .028), mat.steel, [-.02, .12, 0], null, [0, 0, -.12]));
+    g.add(mesh(new THREE.BoxGeometry(.035, .1, .028), mat.steel, [.02, .12, 0], null, [0, 0, .12]));
+    g.add(mesh(new THREE.BoxGeometry(.02, .04, .02), mat.steelDark, [-.03, .17, 0]));
+    g.add(mesh(new THREE.BoxGeometry(.02, .04, .02), mat.steelDark, [.03, .17, 0]));
+    belt.add(g);
+    return g;
+  };
+  // tools tucked in belt (match turnaround: wrenches + red-handle pliers)
+  makeWrench(-.22, .46, -.15, .2);
+  makeWrench(.48, -.05, Math.PI * .55, .18);
+  makeWrench(-.48, -.12, -Math.PI * .6, .16);
+  makePliers(.2, .46, .2);
+  makePliers(-.05, -.48, Math.PI);
+  // spare screwdriver-ish stem in a loop
+  {
+    const sd = new THREE.Group();
+    sd.position.set(.32, .12, .38);
+    sd.rotation.y = .5;
+    sd.add(mesh(new THREE.CylinderGeometry(.012, .012, .22, 6), mat.steel, [0, 0, 0]));
+    sd.add(mesh(new THREE.CylinderGeometry(.022, .02, .07, 8), mat.handle, [0, -.12, 0]));
+    belt.add(sd);
+  }
+
 
   // nohy – nohavice s tlustým ohrnutím (rolled cuffs), velká chodidla
   // children: [0]=pant, [1]=cuffGroup, [2]=foot  — foot index required by motorbike
@@ -476,14 +573,14 @@ export function buildSiki() {
   t1.rotation.x = .18;
   t2.rotation.x = -.22;
 
-  return { root, body, head, arms, legs, tail };
+  return { root, body, head, arms, legs, tail, belt };
 }
 
 /** Subtle idle / motion tail sway (cascade). opts: { bike?: boolean, amp?: number }.
  *  Safe with game3d/motorbike that also set tail.rotation.y / .x — we blend segs only
  *  unless opts.driveRoot is true. */
 export function animateSiki(g, t, opts = {}) {
-  if (!g?.tail) return;
+  if (!g?.tail && !g?.belt) return;
   const dt = t.dt ?? 0.016;
   const now = t.now ?? 0;
   const lerp = (cur, tgt, rate) => cur + (tgt - cur) * Math.min(1, dt * rate);
@@ -491,13 +588,13 @@ export function animateSiki(g, t, opts = {}) {
   const sp = opts.bike ? 200 : 320;
   const wave = Math.sin(now / sp);
   const wave2 = Math.sin(now / (sp * 1.35) + .7);
-  if (opts.driveRoot) {
+  if (g.tail && opts.driveRoot) {
     const baseX = opts.bike ? .25 : 0;
     g.tail.rotation.y = lerp(g.tail.rotation.y, wave * amp, 7);
     g.tail.rotation.x = lerp(g.tail.rotation.x, baseX + wave2 * amp * .25, 6);
     g.tail.rotation.z = lerp(g.tail.rotation.z || 0, wave * amp * .2, 6);
   }
-  if (g.tail.segs) {
+  if (g.tail?.segs) {
     g.tail.segs.forEach((seg, i) => {
       const b = seg.userData.base || { x: 0, y: 0, z: 0 };
       const lag = i * .55;
@@ -507,5 +604,16 @@ export function animateSiki(g, t, opts = {}) {
       seg.rotation.x = lerp(seg.rotation.x, b.x + Math.sin(now / (sp * 1.2) - lag) * a * .35, 7);
       seg.rotation.z = lerp(seg.rotation.z, b.z + w * a * .25, 7);
     });
+  }
+  // cheap tool-belt jiggle (rider / motion) — uses opts.speed when passed
+  if (g.belt) {
+    const spd = opts.speed ?? (opts.bike ? 10 : 0);
+    const j = Math.min(1, Math.abs(spd) / 14) * (opts.amp ?? .1);
+    const wob = Math.sin(now / 48);
+    const wob2 = Math.sin(now / 37 + 1.1);
+    const baseY = g.belt.userData.baseY ?? g.belt.position.y;
+    g.belt.position.y = lerp(g.belt.position.y, baseY + wob * j * .018, 10);
+    g.belt.rotation.z = lerp(g.belt.rotation.z, wob2 * j * .06, 9);
+    g.belt.rotation.x = lerp(g.belt.rotation.x, wob * j * .03, 9);
   }
 }
