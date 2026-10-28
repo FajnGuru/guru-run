@@ -180,7 +180,7 @@ const F = buildFiskule(); const fis = F.root; fis.scale.setScalar(.9); fis.visib
 F.charLights = attachCharLights(fis, { fillI: .4, rimI: .52 });
 F._blinkOff = 1.85;
 const fisBlob = makeGroundBlob(.55, .28); fis.add(fisBlob);
-let fState = LEVEL === 1 ? 'idle' : 'npc', fVy = 0, fT = 0, fSpeed = 0;
+let fState = LEVEL === 1 ? 'idle' : 'npc', fVy = 0, fT = 0, fSpeed = 0, fLeadWait = false;
 const bubble = document.getElementById('bubble'), compassEl = document.getElementById('compass');
 let cut = false, cutSkip = false;
 addEventListener('keydown', () => { if (cut) { cutSkip = true; sikiTap(); } });
@@ -394,6 +394,7 @@ syncFullscreenUi();
 function updateFiskule(dt, now) {
   const gp = guru.position;
   if (fState === 'npc') return;
+  if (fState === 'lead') { updateFiskuleLead(dt, now); return; }
   if (fState === 'idle') { if (gp.z < -350) { fState = 'approach'; fis.visible = true; fis.position.set(1.2, 0, gp.z - 38); fis.rotation.y = 0; } return; }
   if (fState === 'approach') {
     const dz = gp.z - fis.position.z, dx = gp.x - fis.position.x, d = Math.hypot(dx, dz);
@@ -426,6 +427,64 @@ function updateFiskule(dt, now) {
   animateGuru(F, { dt, now }, fis.position.y > 0 ? 0 : fSpeed, fSpeed > 5); holdCompass();
   if (fis.position.y > 0) { F.legs[0].rotation.x = -.8; F.legs[1].rotation.x = .4; }
 }
+function updateFiskuleLead(dt, now) {
+  // L3: Fiškule is the leader along -Z; waits if Guru lags too far
+  const gp = guru.position, fp = fis.position;
+  const ahead = gp.z - fp.z; // >0 when she is deeper (-Z) than Guru
+  const WAIT_AHEAD = 22, RESUME_AHEAD = 12;
+  if (!fLeadWait && ahead > WAIT_AHEAD) fLeadWait = true;
+  if (fLeadWait && ahead < RESUME_AHEAD) fLeadWait = false;
+  // soft side-weave + dodge path obstacles
+  let tx = Math.sin(now / 900) * 1.1;
+  for (const o of l3Obs) {
+    if (o.z < fp.z && o.z > fp.z - 10 && Math.abs(o.x - fp.x) < o.hw + 1.1) {
+      tx += (fp.x >= o.x ? 1 : -1) * 1.6;
+      break;
+    }
+  }
+  tx = THREE.MathUtils.clamp(tx, -WALK_X + .6, WALK_X - .6);
+  const endZ = -LEN + 36;
+  if (fLeadWait || fp.z <= endZ) {
+    // wait / look back toward Guru
+    fSpeed += (0 - fSpeed) * Math.min(1, dt * 6);
+    const lookX = gp.x - fp.x, lookZ = gp.z - fp.z;
+    const wantYaw = Math.atan2(lookX, lookZ);
+    let dy = (wantYaw - fis.rotation.y + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+    fis.rotation.y += THREE.MathUtils.clamp(dy, -dt * 3.5, dt * 3.5);
+    fp.x += (tx * .35 + gp.x * .05 - fp.x) * Math.min(1, dt * 1.2);
+    fp.y = 0; fVy = 0;
+    animateGuru(F, { dt, now }, 0, false);
+    // small "come on" wave while waiting
+    F.arms[1].rotation.set(0, 0, 2.35 + Math.sin(now / 180) * .35);
+    return;
+  }
+  // run deeper into the forest
+  const run = 6.2;
+  fSpeed += (run - fSpeed) * Math.min(1, dt * 4);
+  const dx = tx - fp.x;
+  const dz = -1; // along -Z
+  const len = Math.hypot(dx * .35, 1) || 1;
+  fp.x += (dx / len) * fSpeed * .45 * dt;
+  fp.z += -fSpeed * dt;
+  fp.x = THREE.MathUtils.clamp(fp.x, -WALK_X + .5, WALK_X - .5);
+  fp.z = Math.max(fp.z, endZ);
+  const wantYaw = Math.atan2(dx * .25, dz);
+  let dy = (wantYaw - fis.rotation.y + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+  fis.rotation.y += THREE.MathUtils.clamp(dy, -dt * 5, dt * 5);
+  // light hop over nearby path obstacles (don't use fJump — it clears fVy on ground)
+  if (fp.y <= 0 && fVy <= 0) {
+    fp.y = 0; fVy = 0;
+    for (const o of l3Obs) {
+      if (o.z < fp.z && o.z > fp.z - 3.2 && Math.abs(o.x - fp.x) < o.hw + .9) { fVy = 8.5; break; }
+    }
+  }
+  if (fp.y > 0 || fVy > 0) {
+    fVy -= GRAV * dt; fp.y += fVy * dt;
+    if (fp.y < 0) { fp.y = 0; fVy = 0; }
+  }
+  animateGuru(F, { dt, now }, fp.y > 0 ? 0 : fSpeed, true);
+  if (fp.y > 0) { F.legs[0].rotation.x = -.8; F.legs[1].rotation.x = .4; }
+}
 function holdCompass() { F.arms[0].rotation.set(-1.1, 0, -.35); if (F.compass) F.compass.needle.rotation.z = Math.atan2(0 - fis.position.x, -LEN - fis.position.z) - fis.rotation.y; }
 function fJump(dt, mx, mz) {
   const p = fis.position, grounded = p.y <= 0 && !holeAt(p.z);
@@ -433,7 +492,7 @@ function fJump(dt, mx, mz) {
   if (!grounded || fVy > 0) { fVy -= GRAV * dt; p.y += fVy * dt; if (p.y < 0 && !holeAt(p.z)) { p.y = 0; fVy = 0; } }
 }
 window.__tp = z => { guru.position.set(0, 0, z); checkpoint = Math.min(checkpoint, z + 1); camPos.set(0, 4, z + 8); };
-window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut });
+window.__fis = () => ({ state: fState, x: fis.position.x, y: fis.position.y, z: fis.position.z, cut, leadWait: fLeadWait, fSpeed });
 
 // --- holubi útočníci ---
 const birds = [];
@@ -775,14 +834,15 @@ function startLevel3() {
   buildForestTrees(pathW);
   // Roots / rocks / logs on the path (jump over — replaces L1 holes)
   buildForestObstacles(pathW);
-  // Guru walk controls (reuse L1 tick); Fiškule ahead as placeholder
+  // Guru walk controls (reuse L1 tick); Fiškule leads along the path
   guru.position.set(0, 0, 0);
   heading = 0; speed = 0; camPos.set(0, 4, 8);
   fis.visible = true;
   fis.position.set(.9, 0, -16);
-  fis.rotation.y = Math.PI;
-  showToast('Level 3: Les 🌲');
-  window.__l3 = { base: true, trees: true, obstacles: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length };
+  fis.rotation.y = Math.PI; // face deeper forest (-Z)
+  fState = 'lead'; fLeadWait = false; fSpeed = 0; fVy = 0;
+  showToast('Level 3: Následuj Fiškuli 🌲');
+  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length };
   requestAnimationFrame(tick);
 }
 function syncForestDensity() {
