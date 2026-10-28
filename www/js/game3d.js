@@ -66,6 +66,7 @@ const streetMat = new THREE.MeshStandardMaterial({ map: cob, roughness: .95 }), 
 cob.repeat.set(5, 1);
 const cityGround = [];
 let l3Forest = null; // L3 InstancedMesh trees (set in startLevel3)
+let l3Obs = []; // L3 path obstacles (roots/rocks/logs)
 const segs = []; { let z = 12; for (const h of HOLES) { segs.push([z, h.z0]); z = h.z1; } segs.push([z, -LEN - 12]); }
 for (const [a, b] of segs) {
   const L = a - b, g = new THREE.PlaneGeometry(HALF_W * 2, L); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, uv.getY(k) * L / 2);
@@ -533,6 +534,7 @@ function tick(now) {
   updateBirds(dt, now);
   updateSiki(dt, now);
   if (knock.lengthSq() > .01) { guru.position.x = THREE.MathUtils.clamp(guru.position.x + knock.x * dt, -WALK_X, WALK_X); guru.position.z += knock.z * dt; knock.multiplyScalar(Math.pow(.02, dt)); }
+  if (LEVEL === 3) updateL3Obstacles();
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
   animateGuru(G, { dt, now, lookCam }, grounded ? speed : 0, running);
   if (!grounded) {
@@ -771,6 +773,8 @@ function startLevel3() {
   });
   // Instanced trees along path sides (path stays clear)
   buildForestTrees(pathW);
+  // Roots / rocks / logs on the path (jump over — replaces L1 holes)
+  buildForestObstacles(pathW);
   // Guru walk controls (reuse L1 tick); Fiškule ahead as placeholder
   guru.position.set(0, 0, 0);
   heading = 0; speed = 0; camPos.set(0, 4, 8);
@@ -778,7 +782,7 @@ function startLevel3() {
   fis.position.set(.9, 0, -16);
   fis.rotation.y = Math.PI;
   showToast('Level 3: Les 🌲');
-  window.__l3 = { base: true, trees: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count };
+  window.__l3 = { base: true, trees: true, obstacles: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length };
   requestAnimationFrame(tick);
 }
 function syncForestDensity() {
@@ -842,5 +846,101 @@ function buildForestTrees(pathW) {
   l3Forest = { trunks, crowns, nQuality, nPerf };
   syncForestDensity();
 }
+function hitL3Obs(o) {
+  lives--; elL.textContent = '❤ ' + Math.max(0, lives); invul = 1.5;
+  if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([55, 25, 90]);
+  // trip: short hop back + slowdown (same jump physics as L1)
+  const dx = guru.position.x - o.x, dz = guru.position.z - o.z;
+  const len = Math.hypot(dx, dz) || 1;
+  knock.set(dx / len * 5.5, 0, dz / len * 5.5);
+  vy = 4.2; grounded = false; speed *= .25; squash = -1;
+  const label = o.type === 'root' ? 'Kořen!' : o.type === 'log' ? 'Kláda!' : 'Kámen!';
+  showToast(label + ' -1 život');
+  if (lives <= 0) endScreen('Konec hry – les tě sklátil');
+}
+function updateL3Obstacles() {
+  if (invul > 0 || falling || done || !l3Obs.length) return;
+  const gp = guru.position;
+  // feet / body clearance: jump clears when y >= obstacle height
+  for (const o of l3Obs) {
+    if (Math.abs(gp.x - o.x) < o.hw + .32 && Math.abs(gp.z - o.z) < o.hd + .38 && gp.y < o.h - .02) {
+      hitL3Obs(o);
+      break;
+    }
+  }
+}
+function buildForestObstacles(pathW) {
+  l3Obs = [];
+  let seed = 0x0B57AC1E ^ ((pathW * 997) | 0);
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const half = pathW / 2 - .35;
+  // leave start + Fiškule clear (~25 m), then denser toward deeper forest
+  const specs = [];
+  let z = -28, k = 0;
+  while (z > -LEN + 30) {
+    const deep = Math.min(1, (-z - 28) / 500);
+    const gap = THREE.MathUtils.lerp(22, 11, deep) * (.85 + rnd() * .35);
+    const roll = rnd();
+    const type = roll < .34 ? 'root' : roll < .67 ? 'rock' : 'log';
+    // mostly on path; occasional offset toward berm
+    const x = (rnd() - .5) * half * 1.6;
+    // sizes: jumpable with JUMP_V≈9.5 (apex ~1.7 m) — keep h ≤ ~0.95
+    let hw, hd, h;
+    if (type === 'root') { hw = .55 + rnd() * .45; hd = .28 + rnd() * .2; h = .38 + rnd() * .22; }
+    else if (type === 'rock') { hw = .4 + rnd() * .35; hd = .4 + rnd() * .3; h = .45 + rnd() * .35; }
+    else { hw = .35 + rnd() * .2; hd = .85 + rnd() * .7; h = .42 + rnd() * .28; } // log along z
+    // keep a walkable gap: don't fully block path
+    specs.push({ type, x: THREE.MathUtils.clamp(x, -half + hw, half - hw), z, hw, hd, h, yaw: rnd() * Math.PI });
+    z -= gap; k++;
+  }
+  // meshes (low poly, no postFX)
+  const rootM = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: .92 });
+  const rockM = new THREE.MeshStandardMaterial({ color: 0x7a756c, roughness: .9 });
+  const logM = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: .88 });
+  const rootG = new THREE.CylinderGeometry(.12, .22, 1, 6);
+  const rockG = new THREE.DodecahedronGeometry(.55, 0);
+  const logG = new THREE.CylinderGeometry(.22, .26, 1, 8);
+  for (const o of specs) {
+    l3Obs.push(o);
+    const g = new THREE.Group();
+    if (o.type === 'root') {
+      // arched root across path local x
+      const a = new THREE.Mesh(rootG, rootM);
+      a.scale.set(1.1, o.hw * 2.2, 1);
+      a.rotation.z = Math.PI / 2;
+      a.rotation.y = o.yaw * .15;
+      a.position.set(0, o.h * .45, 0);
+      a.castShadow = true; a.receiveShadow = true;
+      g.add(a);
+      const b = new THREE.Mesh(rootG, rootM);
+      b.scale.set(.7, o.hw * 1.2, .7);
+      b.rotation.set(0.2, 0, Math.PI / 2 + .4);
+      b.position.set(o.hw * .35, o.h * .25, .1);
+      g.add(b);
+    } else if (o.type === 'rock') {
+      const m = new THREE.Mesh(rockG, rockM);
+      m.scale.set(o.hw / .55, o.h / .55, o.hd / .55);
+      m.position.y = o.h * .45;
+      m.rotation.set(o.yaw * .3, o.yaw, .2);
+      m.castShadow = true; m.receiveShadow = true;
+      g.add(m);
+    } else {
+      const m = new THREE.Mesh(logG, logM);
+      m.scale.set(1, o.hd * 2, 1);
+      m.rotation.z = Math.PI / 2;
+      m.rotation.y = Math.PI / 2 + (o.yaw - Math.PI) * .08;
+      m.position.y = o.h * .5;
+      m.castShadow = true; m.receiveShadow = true;
+      g.add(m);
+      // cut face disk
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(.22, 8), M(0xc4a46a));
+      cap.position.set(0, o.h * .5, o.hd);
+      g.add(cap);
+    }
+    g.position.set(o.x, 0, o.z);
+    scene.add(g);
+  }
+}
+
 if (LEVEL === 2) startLevel2();
 if (LEVEL === 3) startLevel3();
