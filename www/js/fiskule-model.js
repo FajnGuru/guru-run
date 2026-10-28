@@ -1,4 +1,4 @@
-// Procedurální model Fiškule (zaječice) — PR6 ears: inner canal, rim fluff, short whiskers
+// Procedurální model Fiškule (zaječice) — PR7 nose/mouth: wet HL + finer smile
 // API: buildFiskule() → { root, body, head, arms, legs, tail, compass }
 // animateGuru z guru-model.js očekává legs[i].children[2] = foot group.
 import * as THREE from 'three';
@@ -176,8 +176,10 @@ export function buildFiskule() {
     dialInk: std(0x2a1c10, .7),
     needleRed: std(0xc41e1a, .35, { emissive: 0x4a0808, emissiveIntensity: .25 }),
     needleBlue: std(0x2a3a6a, .4, { emissive: 0x081020, emissiveIntensity: .1 }),
-    nose: std(0xd77f86, .42, { emissive: 0x4a1820, emissiveIntensity: .08 }),
+    nose: std(0xd07078, .32, { metalness: .08, emissive: 0x4a1820, emissiveIntensity: .1 }),
+    noseWet: std(0xb85860, .18, { metalness: .15 }),
     pinkDeep: std(0xd09088, .9),
+    lip: std(0xc47878, .7),
     whisker: std(0x3a2a20, .55),
     eyeW: std(0xffffff, .2),
     eyeRim: std(0x3a2818, .7),
@@ -185,7 +187,8 @@ export function buildFiskule() {
     pupil: std(0x080808, .18),
     hl: new THREE.MeshBasicMaterial({ color: 0xffffff }),
     hlSoft: new THREE.MeshBasicMaterial({ color: 0xfff0e8, transparent: true, opacity: .5 }),
-    mouth: std(0x3a2220, .85),
+    mouth: std(0x2a1816, .88),
+    mouthDeep: std(0x1a0c0c, .92),
   };
   const mesh = (g, m, p = [0, 0, 0], s, r) => {
     const k = new THREE.Mesh(g, m);
@@ -340,12 +343,35 @@ export function buildFiskule() {
   head.add(mesh(SH(.23, 28, 22), mat.furFace, [0, -.15, .2], [1.25, .88, 1.18]));
   head.add(mesh(SH(.13, 22, 16), mat.furLight, [0, -.12, .34], [1.15, .72, .9]));
   head.add(mesh(SH(.1, 18, 14), mat.furFace, [0, -.22, .18], [1.05, .7, .95]));
-  // nose + philtrum hint
-  head.add(mesh(SH(.048, 16, 12), mat.nose, [0, -.07, .42], [1.45, .9, 1]));
-  head.add(mesh(SH(.014, 8, 6), mat.hl, [-.014, -.055, .455]));
-  head.add(mesh(new THREE.BoxGeometry(.012, .06, .01), mat.mouth, [0, -.12, .4]));
-  // mouth
-  head.add(mesh(new THREE.TorusGeometry(.07, .011, 6, 16, Math.PI * .8), mat.mouth, [0, -.2, .36], null, [0, 0, Math.PI * 1.1]));
+  // nos + tlama v2 — wetter nose HL, nostrils, finer smile
+  const noseG = new THREE.Group();
+  noseG.position.set(0, -.07, .42);
+  head.add(noseG);
+  noseG.add(mesh(SH(.05, 16, 12), mat.nose, [0, 0, 0], [1.5, .92, 1.05]));
+  // nostril divots
+  [-1, 1].forEach(s => {
+    noseG.add(mesh(SH(.016, 8, 6), mat.noseWet, [s * .028, -.008, .025], [1.1, .65, .5]));
+    noseG.add(mesh(SH(.009, 6, 5), std(0x8a4048, .9), [s * .03, -.01, .035], [1, .5, .4]));
+  });
+  // dual wet highlights
+  noseG.add(mesh(SH(.016, 8, 6), mat.hl, [-.016, .01, .04]));
+  noseG.add(mesh(SH(.009, 6, 5), mat.hlSoft, [.014, -.006, .042]));
+  noseG.add(mesh(SH(.006, 5, 4), mat.hl, [-.004, -.012, .045]));
+  // philtrum crease
+  head.add(mesh(new THREE.BoxGeometry(.014, .07, .012), mat.mouth, [0, -.125, .405]));
+  // finer smile — soft lip arc + slight open corner pockets
+  const smile = new THREE.Group();
+  smile.position.set(0, -.2, .36);
+  head.add(smile);
+  smile.add(mesh(new THREE.TorusGeometry(.078, .012, 6, 18, Math.PI * .85), mat.lip, [0, 0, 0], [1.05, .55, 1], [0, 0, Math.PI * 1.08]));
+  smile.add(mesh(new THREE.TorusGeometry(.065, .007, 5, 14, Math.PI * .7), mat.mouth, [0, -.008, .008], [1.05, .5, 1], [0, 0, Math.PI * 1.1]));
+  // tiny open-mouth hint at center
+  smile.add(mesh(SH(.028, 10, 8), mat.mouthDeep, [0, -.012, .01], [1.4, .45, .6]));
+  // soft cheek smile dimples near corners
+  [-1, 1].forEach(s => {
+    smile.add(mesh(SH(.022, 8, 6), mat.furFace, [s * .075, .005, .02], [.9, .7, .55]));
+    smile.add(mesh(SH(.012, 6, 5), mat.lip, [s * .07, -.01, .025], [1, .55, .5]));
+  });
 
   [-1, 1].forEach(s => {
     // almond doe-eyes — wider X, softer Y, slight outer-down tilt
@@ -417,9 +443,6 @@ export function buildFiskule() {
       head.add(w);
     });
   });
-  // wetter nose HL (pairs with whiskers readability)
-  head.add(mesh(SH(.01, 6, 6), mat.hlSoft, [.012, -.08, .455]));
-
   // leather strap + brass aviator goggles on forehead (readable brass/glass)
   head.add(mesh(new THREE.TorusGeometry(.35, .032, 10, 36), mat.leather, [0, .16, -.01], [1.1, 1, 1.05], [Math.PI / 2 - .28, 0, 0]));
   head.add(mesh(new THREE.TorusGeometry(.34, .014, 6, 28), mat.brassDark, [0, .165, 0], [1.05, 1, 1.02], [Math.PI / 2 - .28, 0, 0]));
