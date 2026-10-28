@@ -337,29 +337,61 @@ export function buildGuru() {
 }
 
 export function animateGuru(g, t, speed, running) {
-  const a = Math.abs(speed), k = Math.min(1, a / 4), sw = k * (running ? .95 : .6);
+  const a = Math.abs(speed);
   const dt = t.dt;
-  g.phase = (g.phase || 0) + dt * (3 + a * 1.5);
-  const p = g.phase, sn = Math.sin(p);
-  g.legs[0].rotation.x = sn * sw; g.legs[1].rotation.x = -sn * sw;
-  g.legs.forEach((l, i) => l.children[2].rotation.x = Math.max(0, (i ? sn : -sn)) * .5 * k);
-  g.arms[0].rotation.x = -sn * sw * .9; g.arms[1].rotation.x = sn * sw * .9;
-  g.body.position.y = Math.abs(Math.cos(p)) * .07 * k;
-  g.body.rotation.x += ((running && a > 5 ? .16 : 0) - g.body.rotation.x) * Math.min(1, dt * 6);
-  g.body.rotation.y = Math.sin(p) * .06 * k;
-  // lookCam: tělo otáčí game3d (~180°); tady jen jemný glance, ať se netočí dvojitě
-  const wantLook = !!t.lookCam;
-  g._lookT = Math.min(1, Math.max(0, (g._lookT || 0) + (wantLook ? dt * 2.2 : -dt * 3.5)));
-  const look = g._lookT;
-  const walkY = a < .5 && look < .2 ? Math.sin(t.now / 900) * .12 : 0;
-  const tgtY = walkY + look * (.18 + Math.sin(t.now / 800) * .04);
-  const tgtZ = Math.sin(p) * .04 * k * (1 - look) + look * .06;
-  const tgtX = look * -.05;
   const lerp = (cur, tgt, rate) => cur + (tgt - cur) * Math.min(1, dt * rate);
-  g.head.rotation.y = lerp(g.head.rotation.y, tgtY, 10);
-  g.head.rotation.z = lerp(g.head.rotation.z, tgtZ, 10);
-  g.head.rotation.x = lerp(g.head.rotation.x, tgtX, 10);
-  // jemný flop jazyka
+  // plynulejší náběh intenzity chůze (ne skok 0→1)
+  const kTgt = Math.min(1, a / 3.6);
+  g._moveK = lerp(g._moveK || 0, kTgt, 7);
+  const mk = g._moveK;
+  // kadence: pomalejší base, plynulejší přechod walk→run
+  const cadence = 2.2 + a * (running ? 1.25 : .95);
+  g.phase = (g.phase || 0) + dt * cadence;
+  const p = g.phase;
+  const sn = Math.sin(p);
+  const snLag = Math.sin(p - .28); // paže mírně zpožděné = měkčí
+  const walkAmp = mk * (running ? .82 : .52);
+  const armAmp = walkAmp * .88;
+
+  // nohy — lerp místo přímého přiřazení
+  g.legs[0].rotation.x = lerp(g.legs[0].rotation.x, sn * walkAmp, 11);
+  g.legs[1].rotation.x = lerp(g.legs[1].rotation.x, -sn * walkAmp, 11);
+  g.legs.forEach((l, i) => {
+    const footLift = Math.max(0, (i ? sn : -sn)) * .4 * mk;
+    l.children[2].rotation.x = lerp(l.children[2].rotation.x, footLift, 13);
+  });
+  // paže — lag + měkčí rate
+  g.arms[0].rotation.x = lerp(g.arms[0].rotation.x, -snLag * armAmp, 9);
+  g.arms[1].rotation.x = lerp(g.arms[1].rotation.x, snLag * armAmp, 9);
+
+  // body bob: 2× za krok, + idle breath; jemnější než abs(cos)
+  const strideBob = (1 - Math.cos(p * 2)) * .5; // 0..1
+  const breath = (1 - mk) * Math.sin(t.now / 680) * .028;
+  g.body.position.y = lerp(g.body.position.y, strideBob * .05 * mk + breath, 9);
+  // lean / hip sway — soft rates
+  const leanX = (running && a > 5 ? .11 : mk * .035);
+  g.body.rotation.x = lerp(g.body.rotation.x, leanX, 5);
+  g.body.rotation.y = lerp(g.body.rotation.y, sn * .048 * mk, 7);
+  g.body.rotation.z = lerp(g.body.rotation.z, sn * .03 * mk, 7);
+  // jemný walk squash/stretch na body (root squash z game3d zůstává na skoky)
+  const wsq = Math.sin(p * 2) * .022 * mk;
+  const sx = 1 + wsq * .35, sy = 1 - wsq, sz = 1 + wsq * .35;
+  g.body.scale.x = lerp(g.body.scale.x, sx, 10);
+  g.body.scale.y = lerp(g.body.scale.y, sy, 10);
+  g.body.scale.z = lerp(g.body.scale.z, sz, 10);
+
+  // lookCam: tělo otáčí game3d (~180°); tady jen jemný glance
+  const wantLook = !!t.lookCam;
+  g._lookT = Math.min(1, Math.max(0, (g._lookT || 0) + (wantLook ? dt * 2.0 : -dt * 3.0)));
+  const look = g._lookT;
+  const walkY = a < .5 && look < .2 ? Math.sin(t.now / 950) * .1 : 0;
+  const tgtY = walkY + look * (.18 + Math.sin(t.now / 800) * .04);
+  const tgtZ = sn * .035 * mk * (1 - look) + look * .05;
+  const tgtX = look * -.05 + breath * .4;
+  g.head.rotation.y = lerp(g.head.rotation.y, tgtY, 8);
+  g.head.rotation.z = lerp(g.head.rotation.z, tgtZ, 8);
+  g.head.rotation.x = lerp(g.head.rotation.x, tgtX, 8);
+  // jemný flop jazyka (už se líbí)
   if (g.head.tongue) {
     const tong = g.head.tongue;
     const bx = tong.userData.baseX ?? tong.rotation.x;
@@ -367,5 +399,8 @@ export function animateGuru(g, t, speed, running) {
     tong.rotation.x = bx + Math.sin(t.now / 320) * .1;
     tong.rotation.z = bz + Math.sin(t.now / 260) * .14;
   }
-  g.tail.rotation.y = Math.sin(t.now / (a > 1 ? 90 : 160)) * .55; g.tail.rotation.x = -.2;
+  // ocas — plynulejší
+  const tailSp = a > 1 ? 100 : 180;
+  g.tail.rotation.y = lerp(g.tail.rotation.y, Math.sin(t.now / tailSp) * (.4 + mk * .2), 6);
+  g.tail.rotation.x = lerp(g.tail.rotation.x, -.18 - mk * .06, 5);
 }
