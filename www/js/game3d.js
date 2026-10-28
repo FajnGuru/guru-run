@@ -249,7 +249,7 @@ for (let i = 0; i < SP; i++) { spVel.push(new THREE.Vector3()); spPos[i * 3 + 1]
 let spNext = 0;
 function burst(p) { for (let n = 0; n < 12; n++) { const i = spNext++ % SP; spPos.set([p.x, p.y, p.z], i * 3); spVel[i].set(Math.random() - .5, Math.random() * .8 + .3, Math.random() - .5).multiplyScalar(5); spLife[i] = .5; } }
 let bones = 0, lives = 3, actx = null;
-const elB = document.getElementById('bones'), elL = document.getElementById('lives'), toast = document.getElementById('toast');
+const elB = document.getElementById('bones'), elL = document.getElementById('lives'), elFis = document.getElementById('fisDist'), toast = document.getElementById('toast');
 function beep() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(880, actx.currentTime); o.frequency.exponentialRampToValueAtTime(1760, actx.currentTime + .08); g.gain.setValueAtTime(.06, actx.currentTime); g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + .15); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + .16); } catch (e) {} }
 function showToast(t) { toast.textContent = t; toast.classList.add('on'); clearTimeout(showToast.h); showToast.h = setTimeout(() => toast.classList.remove('on'), 1300); }
 function collect(b) { b.alive = false; b.t = .25; bones++; burst(b); beep(); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(15); if (bones % 100 === 0) { lives++; showToast('+1 život!'); if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate([40, 40, 80]); } elB.textContent = '🦴 ' + bones; elL.textContent = '❤ ' + lives; }
@@ -549,6 +549,18 @@ function updateFiskuleLead(dt, now) {
   animateGuru(F, { dt, now }, fp.y > 0 ? 0 : fSpeed, true);
   if (fp.y > 0) { F.legs[0].rotation.x = -.8; F.legs[1].rotation.x = .4; }
 }
+function updateL3Hud() {
+  // L3-only: Fiškule distance (meters + bars). Hidden on L1/L2.
+  if (LEVEL !== 3 || !elFis || !elFis.classList.contains('on')) return;
+  const d = Math.hypot(guru.position.x - fis.position.x, guru.position.z - fis.position.z);
+  const m = Math.round(d);
+  const filled = Math.max(0, Math.min(5, Math.round(5 * (1 - d / 28))));
+  const bars = '▓'.repeat(filled) + '░'.repeat(5 - filled);
+  elFis.innerHTML = `🐰 ${m}&nbsp;m <span class="bars">${bars}</span>`;
+  elFis.classList.toggle('near', d < 12);
+  elFis.classList.toggle('mid', d >= 12 && d <= 22);
+  elFis.classList.toggle('far', d > 22);
+}
 function updateL3FollowFeel(now) {
   // L3 soft leash: compass → Fiškule, toast when lost, gentle rejoin (no hard fail)
   if (fState !== 'lead') return;
@@ -669,7 +681,7 @@ window.__birds = () => birds.map(b => b.state);
 function tick(now) {
   if (done) { renderer.render(scene, camera); return requestAnimationFrame(tick); }
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if (cut) { if (sState === 'cut') updateSiki(dt, now); else updateFiskule(dt, now); updateBones(dt, now); syncGroundBlob(guru, guruBlob, { airborne: false }); syncGroundBlob(fis, fisBlob, { airborne: fis.position.y > .05, hidden: !fis.visible }); renderer.render(scene, camera); return requestAnimationFrame(tick); }
+  if (cut) { if (sState === 'cut') updateSiki(dt, now); else updateFiskule(dt, now); updateBones(dt, now); if (LEVEL === 3) updateL3Hud(); syncGroundBlob(guru, guruBlob, { airborne: false }); syncGroundBlob(fis, fisBlob, { airborne: fis.position.y > .05, hidden: !fis.visible }); renderer.render(scene, camera); return requestAnimationFrame(tick); }
   let fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - jy;
   let turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - jx;
   fwd = THREE.MathUtils.clamp(fwd, -1, 1); turn = THREE.MathUtils.clamp(turn, -1, 1);
@@ -714,6 +726,7 @@ function tick(now) {
   if (LEVEL === 3) { updateL3Obstacles(); updateL3Branches(); }
   if (fState === 'follow') compassEl.style.transform = `rotate(${(-(Math.atan2(0 - guru.position.x, -LEN - guru.position.z) - Math.atan2(-Math.sin(heading), -Math.cos(heading))) * 180 / Math.PI) - 90}deg)`;
   else if (LEVEL === 3 && fState === 'lead') updateL3FollowFeel(now);
+  if (LEVEL === 3) updateL3Hud();
   animateGuru(G, { dt, now, lookCam }, grounded ? speed : 0, running);
   if (!grounded) {
     const up = vy > 0, L = (c, tgt) => c + (tgt - c) * Math.min(1, dt * 7);
@@ -968,10 +981,11 @@ function startLevel3() {
   fState = 'leadIntro'; cut = true; cutSkip = false; fT = 0;
   fLeadWait = false; fLost = false; fWaitToast = false; fSpeed = 0; fVy = 0;
   compassEl.classList.remove('on'); compassEl.style.opacity = '';
+  if (elFis) { elFis.classList.add('on'); elFis.classList.remove('near', 'mid', 'far'); elFis.textContent = '🐰 …'; }
   bubble.innerHTML = 'Guru! 🐰 Pojď za mnou do lesa!<br>Na konci stezky je mýtina — následuj mě.<small>ťukni nebo stiskni klávesu</small>';
   bubble.classList.add('on');
   if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(25);
-  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, threats: true, cutscenes: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length, branches: l3Branches.length, checks: CHECKS.length, endZ: L3_END_Z };
+  window.__l3 = { base: true, trees: true, obstacles: true, lead: true, follow: true, threats: true, cutscenes: true, hud: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count, obs: l3Obs.length, branches: l3Branches.length, checks: CHECKS.length, endZ: L3_END_Z };
   requestAnimationFrame(tick);
 }
 function syncForestDensity() {
