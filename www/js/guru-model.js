@@ -250,28 +250,47 @@ export function buildGuru() {
   head.add(jaw);
   jaw.add(mesh(SH(.145, 24, 16), mat.mouth, [0, -.02, .02], [1.4, .55, .95]));
   jaw.add(mesh(new THREE.SphereGeometry(.115, 18, 12, 0, Math.PI * 2, 0, Math.PI * .55), mat.gum, [0, .025, .05], [1.25, .72, 1.05]));
-  // plochý „plácající“ jazyk (Crash) — extrude silhouette, ne tyčka
+  // Crash flat lolling tongue v2 — wide Extrude, thin depth, tip child for flop
+  // Shape in XY (width×length); rotateX(π/2) → flat face in XZ (reads flat from camera)
   const tongue = new THREE.Group();
-  tongue.position.set(.02, -.06, .14);
-  tongue.rotation.set(1.05, .15, .45);
+  tongue.position.set(.035, -.055, .1);
+  // hang forward-down-right so flat top faces camera on idle look-back
+  tongue.rotation.set(.72, .18, .28);
   jaw.add(tongue);
-  const tShape = new THREE.Shape();
-  tShape.moveTo(0, 0);
-  tShape.bezierCurveTo(.055, .01, .075, .08, .055, .16);
-  tShape.bezierCurveTo(.035, .22, .01, .25, 0, .255);
-  tShape.bezierCurveTo(-.01, .25, -.035, .22, -.055, .16);
-  tShape.bezierCurveTo(-.075, .08, -.055, .01, 0, 0);
-  const tGeo = new THREE.ExtrudeGeometry(tShape, {
-    depth: .016, bevelEnabled: true, bevelThickness: .01, bevelSize: .014, bevelSegments: 2, curveSegments: 10,
-  });
-  tGeo.translate(0, 0, -.008);
-  const tMesh = new THREE.Mesh(tGeo, mat.tongue);
-  tMesh.castShadow = true;
-  tongue.add(tMesh);
-  // střední rýha
-  tongue.add(mesh(new THREE.BoxGeometry(.008, .18, .004), std(0xc43a4e, .55), [0, .12, .012]));
+  const makeTongueGeo = (halfW, len) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-halfW * .45, 0);
+    sh.lineTo(halfW * .45, 0);
+    sh.bezierCurveTo(halfW * .95, len * .12, halfW * 1.05, len * .45, halfW * .75, len * .72);
+    sh.bezierCurveTo(halfW * .45, len * .92, halfW * .18, len, 0, len * 1.02);
+    sh.bezierCurveTo(-halfW * .18, len, -halfW * .45, len * .92, -halfW * .75, len * .72);
+    sh.bezierCurveTo(-halfW * 1.05, len * .45, -halfW * .95, len * .12, -halfW * .45, 0);
+    const geo = new THREE.ExtrudeGeometry(sh, {
+      depth: .012, bevelEnabled: true, bevelThickness: .006, bevelSize: .01, bevelSegments: 2, curveSegments: 12,
+    });
+    geo.translate(0, 0, -.006);
+    // flat XY → stick forward (+Z), thin in Y
+    geo.rotateX(Math.PI / 2);
+    return geo;
+  };
+  const tRoot = new THREE.Mesh(makeTongueGeo(.095, .14), mat.tongue);
+  tRoot.castShadow = true;
+  tongue.add(tRoot);
+  // tip segment (wider pad) — animated flop
+  const tip = new THREE.Group();
+  tip.position.set(0, -.01, .13);
+  tip.rotation.x = .35;
+  tongue.add(tip);
+  const tTip = new THREE.Mesh(makeTongueGeo(.1, .16), mat.tongue);
+  tTip.castShadow = true;
+  tip.add(tTip);
+  // groove on tip (flat dark line, not a rod)
+  tip.add(mesh(new THREE.BoxGeometry(.012, .004, .12), std(0xc43a4e, .55), [0, .01, .02]));
+  tongue.tip = tip;
   tongue.userData.baseX = tongue.rotation.x;
+  tongue.userData.baseY = tongue.rotation.y;
   tongue.userData.baseZ = tongue.rotation.z;
+  tip.userData.baseX = tip.rotation.x;
   head.tongue = tongue;
   // čelo / šedá kresba
   head.add(mesh(SH(.15, 24, 16), mat.furGrey, [0, .18, .32], [.5, 1.05, .42], [-.35, 0, 0]));
@@ -391,13 +410,22 @@ export function animateGuru(g, t, speed, running) {
   g.head.rotation.y = lerp(g.head.rotation.y, tgtY, 8);
   g.head.rotation.z = lerp(g.head.rotation.z, tgtZ, 8);
   g.head.rotation.x = lerp(g.head.rotation.x, tgtX, 8);
-  // jemný flop jazyka (už se líbí)
+  // Crash tongue flop — root sway + tip waggle (reads as floppy, not a rod)
   if (g.head.tongue) {
     const tong = g.head.tongue;
+    const n = t.now;
     const bx = tong.userData.baseX ?? tong.rotation.x;
+    const by = tong.userData.baseY ?? tong.rotation.y;
     const bz = tong.userData.baseZ ?? tong.rotation.z;
-    tong.rotation.x = bx + Math.sin(t.now / 320) * .1;
-    tong.rotation.z = bz + Math.sin(t.now / 260) * .14;
+    tong.rotation.x = bx + Math.sin(n / 280) * .12 + Math.sin(n / 170) * .05;
+    tong.rotation.y = by + Math.sin(n / 310) * .07;
+    tong.rotation.z = bz + Math.sin(n / 230) * .16;
+    if (tong.tip) {
+      const tbx = tong.tip.userData.baseX ?? tong.tip.rotation.x;
+      tong.tip.rotation.x = tbx + Math.sin(n / 190) * .22;
+      tong.tip.rotation.z = Math.sin(n / 160) * .18;
+      tong.tip.rotation.y = Math.sin(n / 250) * .08;
+    }
   }
   // ocas — plynulejší
   const tailSp = a > 1 ? 100 : 180;
