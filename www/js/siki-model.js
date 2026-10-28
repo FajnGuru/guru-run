@@ -1,4 +1,4 @@
-// Procedurální model SIKI (klokan) – PR3: dres SIKI / 69 (jersey stripes + chest/arm marks)
+// Procedurální model SIKI (klokan) – PR4: džínové lacláče (bib, straps, rolled cuffs)
 // API: buildSiki() → { root, body, head, arms, legs, tail }; animateSiki(g, t, opts?)
 // DŮLEŽITÉ: legs[i].children[2] = foot group (motorbike pose).
 // Tail.segs = cascade segments; bike pose sets tail.rotation.x ≈ .25 (over seat).
@@ -111,6 +111,42 @@ function makeIrisMap() {
 function muzzleMap() { return _muzzleMap || (_muzzleMap = makeMuzzleMap()); }
 function irisMap() { return _irisMap || (_irisMap = makeIrisMap()); }
 
+/** Soft denim twill (mobile 96px). */
+let _denimMap;
+function makeDenimMap() {
+  const s = 96, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#5a7296';
+  ctx.fillRect(0, 0, s, s);
+  // twill diagonals
+  for (let i = -s; i < s * 2; i += 3) {
+    ctx.strokeStyle = i % 6 === 0 ? 'rgba(255,255,255,.08)' : 'rgba(20,30,50,.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + s, s);
+    ctx.stroke();
+  }
+  // weave grain
+  for (let i = 0; i < 400; i++) {
+    const v = 70 + ((Math.random() * 50) | 0);
+    ctx.fillStyle = `rgba(${v},${v + 15},${v + 35},${.35})`;
+    ctx.fillRect((Math.random() * s) | 0, (Math.random() * s) | 0, 1 + (Math.random() * 2) | 0, 1);
+  }
+  // orange stitch flecks
+  for (let i = 0; i < 30; i++) {
+    ctx.fillStyle = 'rgba(200,130,50,.35)';
+    ctx.fillRect((Math.random() * s) | 0, (Math.random() * s) | 0, 2, 1);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2.5, 2.5);
+  tex.needsUpdate = true;
+  return tex;
+}
+function denimMap() { return _denimMap || (_denimMap = makeDenimMap()); }
+
 export function buildSiki() {
   const noise = furMap();
   const muz = muzzleMap();
@@ -136,7 +172,12 @@ export function buildSiki() {
     whiteSoft: std(0xe8e8ec, .8),
     navy: std(0x23305e, .78),
     navyDeep: std(0x1a2448, .82),
-    denim: std(0x52698f, .95), denimLight: std(0x8ea0bd, .95),
+    denim: std(0x52698f, .95, { map: denimMap(), roughnessMap: denimMap(), bumpMap: denimMap(), bumpScale: .04 }),
+    denimLight: std(0x7a92b4, .92, { map: denimMap(), bumpMap: denimMap(), bumpScale: .03 }),
+    denimDark: std(0x3a4e6e, .96, { map: denimMap(), bumpMap: denimMap(), bumpScale: .05 }),
+    stitch: std(0xc9883a, .7),
+    strap: std(0x7a4a28, .75),
+    strapDark: std(0x5a3218, .8),
     leather: std(0x8a5530, .6), leatherDark: std(0x5c3418, .6),
     steel: std(0xb8bec6, .3, { metalness: .8 }), handle: std(0xc0282d, .5),
     nose: std(0x1a1414, .32, { metalness: .1, emissive: 0x1a1010, emissiveIntensity: .05 }),
@@ -181,17 +222,46 @@ export function buildSiki() {
   body.add(decal(sikiTex, .42, .15, [0, 1.95, .455]));
   // tiny navy underline under SIKI for athletic look
   body.add(mesh(new THREE.BoxGeometry(.34, .012, .01), mat.navy, [0, 1.875, .46]));
-  // montérky – laclík vpředu a vzadu + popruhy
-  body.add(mesh(new THREE.BoxGeometry(.5, .5, .06), mat.denim, [0, 1.6, .43]));
-  body.add(mesh(new THREE.BoxGeometry(.24, .16, .02), mat.denimLight, [0, 1.62, .465]));
-  body.add(mesh(new THREE.BoxGeometry(.46, .42, .06), mat.denim, [0, 1.58, -.43]));
+  // montérky v2 – džínové lacláče (bib, brown straps, X back, pockets, tail cutout)
+  // front bib (sits below jersey SIKI)
+  body.add(mesh(new THREE.BoxGeometry(.52, .52, .07), mat.denim, [0, 1.58, .44]));
+  // bib edge stitch lines
+  body.add(mesh(new THREE.BoxGeometry(.48, .01, .01), mat.stitch, [0, 1.82, .48]));
+  body.add(mesh(new THREE.BoxGeometry(.48, .01, .01), mat.stitch, [0, 1.35, .48]));
+  // chest pocket on bib
+  body.add(mesh(new THREE.BoxGeometry(.28, .2, .04), mat.denimLight, [0, 1.6, .485]));
+  body.add(mesh(new THREE.BoxGeometry(.26, .015, .01), mat.stitch, [0, 1.69, .51]));
+  // small SIKI on bib pocket (bike ref) — jersey keeps the large chest mark
+  const bibSiki = textTex('SIKI', 256, 96, 'bold 72px Arial, sans-serif', '#f4f6fa', { stroke: '#2a3a55', lineWidth: 8 });
+  body.add(decal(bibSiki, .24, .09, [0, 1.6, .51]));
+  // brass buttons at bib top corners
   [-1, 1].forEach(s => {
-    body.add(mesh(new THREE.BoxGeometry(.07, .75, .03), mat.denim, [s * .2, 1.98, .43], null, [-.12, 0, s * .1]));
-    body.add(mesh(new THREE.BoxGeometry(.07, .7, .03), mat.denim, [s * .12, 1.98, -.43], null, [.1, 0, -s * .35]));
-    body.add(mesh(new THREE.BoxGeometry(.06, .05, .03), mat.brass, [s * .21, 1.84, .465]));
+    body.add(mesh(new THREE.CylinderGeometry(.035, .035, .02, 10), mat.brass, [s * .2, 1.8, .485], null, [Math.PI / 2, 0, 0]));
+    body.add(mesh(new THREE.CylinderGeometry(.012, .012, .015, 6), mat.strapDark, [s * .2, 1.8, .495], null, [Math.PI / 2, 0, 0]));
   });
-  // kalhoty – boky
-  body.add(mesh(lathe([[0, .95], [.4, .97], [.46, 1.15], [.45, 1.36], [0, 1.36]]), mat.denim));
+  // brown leather/canvas straps (front) + brass buckles
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.075, .78, .035), mat.strap, [s * .2, 1.98, .44], null, [-.1, 0, s * .08]));
+    body.add(mesh(new THREE.BoxGeometry(.09, .06, .04), mat.brass, [s * .205, 1.84, .47]));
+    body.add(mesh(new THREE.BoxGeometry(.05, .03, .02), mat.strapDark, [s * .205, 1.84, .495]));
+  });
+  // rear panel + X crossed straps
+  body.add(mesh(new THREE.BoxGeometry(.5, .4, .06), mat.denim, [0, 1.55, -.44]));
+  // tail cutout notch (seat opening for thick kangaroo tail)
+  body.add(mesh(new THREE.BoxGeometry(.22, .18, .05), mat.denimDark, [0, 1.28, -.46]));
+  [-1, 1].forEach(s => {
+    // crossed X straps on back
+    body.add(mesh(new THREE.BoxGeometry(.07, .85, .03), mat.strap, [s * .05, 1.95, -.44], null, [.12, 0, -s * .55]));
+    // back pockets
+    body.add(mesh(new THREE.BoxGeometry(.18, .2, .035), mat.denimLight, [s * .16, 1.42, -.48]));
+    body.add(mesh(new THREE.BoxGeometry(.16, .012, .01), mat.stitch, [s * .16, 1.51, -.5]));
+  });
+  // hip / seat denim (waist) — slightly thicker silhouette
+  body.add(mesh(lathe([[0, .95], [.42, .97], [.48, 1.12], [.47, 1.34], [.4, 1.4], [0, 1.4]]), mat.denim));
+  // side seam stitch hints
+  [-1, 1].forEach(s => {
+    body.add(mesh(new THREE.BoxGeometry(.012, .35, .01), mat.stitch, [s * .47, 1.2, .05], null, [0, 0, 0]));
+  });
   // pracovní opasek s brašnami a nářadím
   body.add(mesh(new THREE.CylinderGeometry(.47, .47, .1, 24), mat.leather, [0, 1.3, 0]));
   body.add(mesh(new THREE.BoxGeometry(.12, .1, .03), mat.brass, [0, 1.3, .47]));
@@ -203,11 +273,18 @@ export function buildSiki() {
     body.add(mesh(new THREE.BoxGeometry(.05, .1, .03), mat.handle, [px + .05 * Math.cos(ang), 1.33, pz - .05 * Math.sin(ang)], null, [0, ang, 0]));
   });
 
-  // nohy – nohavice s ohrnutím, velká chodidla
+  // nohy – nohavice s tlustým ohrnutím (rolled cuffs), velká chodidla
+  // children: [0]=pant, [1]=cuffGroup, [2]=foot  — foot index required by motorbike
   const legs = [-1, 1].map(s => {
     const g = new THREE.Group(); g.position.set(s * .22, 1.05, 0);
-    g.add(mesh(lathe([[0, 0], [.22, -.02], [.22, -.45], [.21, -.62], [0, -.62]], 16), mat.denim));
-    g.add(mesh(new THREE.CylinderGeometry(.235, .235, .12, 16), mat.denimLight, [0, -.62, 0]));
+    // pant leg (short cut above ankle)
+    g.add(mesh(lathe([[0, 0], [.23, -.02], [.225, -.4], [.22, -.55], [0, -.55]], 16), mat.denim));
+    // thick rolled cuff group
+    const cuff = new THREE.Group(); cuff.position.set(0, -.58, 0); g.add(cuff);
+    cuff.add(mesh(new THREE.CylinderGeometry(.25, .25, .14, 18), mat.denimLight, [0, 0, 0]));
+    cuff.add(mesh(new THREE.CylinderGeometry(.245, .245, .06, 16), mat.denimDark, [0, -.08, 0]));
+    cuff.add(mesh(new THREE.TorusGeometry(.25, .018, 6, 18), mat.stitch, [0, .06, 0], null, [Math.PI / 2, 0, 0]));
+    // kangaroo foot
     const foot = new THREE.Group(); foot.position.set(0, -.92, .15); g.add(foot);
     foot.add(mesh(new THREE.CapsuleGeometry(.11, .2, 4, 8), mat.fur, [0, .2, -.15]));
     foot.add(mesh(S(.18), mat.fur, [0, 0, .05], [.85, .5, 2.4]));
