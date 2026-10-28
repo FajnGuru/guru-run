@@ -43,6 +43,7 @@ function applyGfx(mode, { persist = true } = {}) {
   }
   if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   syncCharLights();
+  syncForestDensity();
   syncGfxUi();
   resize();
 }
@@ -64,6 +65,7 @@ const cob = new THREE.CanvasTexture(cv); cob.wrapS = cob.wrapT = THREE.RepeatWra
 const streetMat = new THREE.MeshStandardMaterial({ map: cob, roughness: .95 }), walkMat = M(0x9a948a);
 cob.repeat.set(5, 1);
 const cityGround = [];
+let l3Forest = null; // L3 InstancedMesh trees (set in startLevel3)
 const segs = []; { let z = 12; for (const h of HOLES) { segs.push([z, h.z0]); z = h.z1; } segs.push([z, -LEN - 12]); }
 for (const [a, b] of segs) {
   const L = a - b, g = new THREE.PlaneGeometry(HALF_W * 2, L); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, uv.getY(k) * L / 2);
@@ -767,6 +769,8 @@ function startLevel3() {
     berm.receiveShadow = true;
     scene.add(berm);
   });
+  // Instanced trees along path sides (path stays clear)
+  buildForestTrees(pathW);
   // Guru walk controls (reuse L1 tick); Fiškule ahead as placeholder
   guru.position.set(0, 0, 0);
   heading = 0; speed = 0; camPos.set(0, 4, 8);
@@ -774,8 +778,69 @@ function startLevel3() {
   fis.position.set(.9, 0, -16);
   fis.rotation.y = Math.PI;
   showToast('Level 3: Les 🌲');
-  window.__l3 = { base: true, level: 3, pathW };
+  window.__l3 = { base: true, trees: true, level: 3, pathW, treeCount: l3Forest?.trunks?.count };
   requestAnimationFrame(tick);
+}
+function syncForestDensity() {
+  if (!l3Forest) return;
+  const n = gfxMode === 'perf' ? l3Forest.nPerf : l3Forest.nQuality;
+  l3Forest.trunks.count = n;
+  l3Forest.crowns.count = n;
+  // shadows off in Výkon — cheaper on mobile
+  const sh = gfxMode !== 'perf';
+  l3Forest.trunks.castShadow = sh;
+  l3Forest.crowns.castShadow = sh;
+}
+function buildForestTrees(pathW) {
+  // deterministic scatter so quality/perf share the same near trees
+  let seed = 0xC0FFEE ^ (pathW * 1000) | 0;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const clear = pathW / 2 + 2.2; // keep dirt path runnable
+  const spots = [];
+  // near band (readable silhouette) + far band (depth)
+  for (const band of [{ x0: clear, x1: clear + 7, step: 5.2 }, { x0: clear + 7, x1: clear + 18, step: 7.5 }]) {
+    for (const side of [-1, 1]) {
+      for (let z = 10; z > -LEN - 8; z -= band.step * (.75 + rnd() * .55)) {
+        const x = side * (band.x0 + rnd() * (band.x1 - band.x0));
+        if (Math.abs(x) < clear) continue;
+        const h = 5.2 + rnd() * 6.5;
+        spots.push({ x, z: z + (rnd() - .5) * 2.2, h, yaw: rnd() * Math.PI * 2, lean: (rnd() - .5) * .08 });
+      }
+    }
+  }
+  // near-path first so Výkon keeps the densest readable row when count drops
+  spots.sort((a, b) => Math.abs(a.x) - Math.abs(b.x) || b.z - a.z);
+  const nQuality = Math.min(spots.length, 220);
+  const nPerf = Math.max(48, Math.floor(nQuality * .45));
+  const trunkG = new THREE.CylinderGeometry(.18, .28, 1, 6);
+  const crownG = new THREE.ConeGeometry(.55, 1.35, 7);
+  const trunkM = new THREE.MeshStandardMaterial({ color: 0x5a3d28, roughness: .95 });
+  const crownM = new THREE.MeshStandardMaterial({ color: 0x2f6b2a, roughness: .88 });
+  const trunks = new THREE.InstancedMesh(trunkG, trunkM, nQuality);
+  const crowns = new THREE.InstancedMesh(crownG, crownM, nQuality);
+  trunks.receiveShadow = true; crowns.receiveShadow = true;
+  const o = new THREE.Object3D();
+  const col = new THREE.Color();
+  for (let i = 0; i < nQuality; i++) {
+    const t = spots[i], trunkH = t.h * .42, crownH = t.h * .72;
+    o.position.set(t.x, trunkH / 2, t.z);
+    o.rotation.set(t.lean, t.yaw, -t.lean * .4);
+    o.scale.set(1 + (t.h - 7) * .04, trunkH, 1 + (t.h - 7) * .04);
+    o.updateMatrix(); trunks.setMatrixAt(i, o.matrix);
+    o.position.set(t.x, trunkH + crownH * .38, t.z);
+    o.rotation.set(t.lean * .5, t.yaw * .7, 0);
+    const cs = .9 + (t.h - 5) * .08;
+    o.scale.set(cs * (1.1 + (i % 3) * .12), crownH, cs * (1.1 + (i % 5) * .08));
+    o.updateMatrix(); crowns.setMatrixAt(i, o.matrix);
+    col.setHSL(.28 + (i % 7) * .012, .45 + (i % 5) * .04, .28 + (i % 4) * .03);
+    crowns.setColorAt(i, col);
+  }
+  trunks.instanceMatrix.needsUpdate = true;
+  crowns.instanceMatrix.needsUpdate = true;
+  if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
+  scene.add(trunks, crowns);
+  l3Forest = { trunks, crowns, nQuality, nPerf };
+  syncForestDensity();
 }
 if (LEVEL === 2) startLevel2();
 if (LEVEL === 3) startLevel3();
