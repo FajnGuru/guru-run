@@ -1,4 +1,4 @@
-// Procedurální retro motorka (café racer / scrambler) – PR7: spoked wheels, exhaust, shocks, engine
+// Procedurální retro motorka (café racer / scrambler) – PR8: rider pose on bike
 import * as THREE from 'three';
 import { buildSiki } from './siki-model.js';
 
@@ -235,14 +235,70 @@ export function buildMotorbike(withRider = true) {
   // swingarm hint
   bob.add(cyl(.016, 0, m.black, [-.1, .42, -.2], [-.1, .38, -.7]));
   bob.add(cyl(.016, 0, m.black, [.1, .42, -.2], [.1, .38, -.7]));
+  // footpegs (target for rider feet near engine)
+  [-1, 1].forEach(s => {
+    bob.add(mesh(new THREE.CylinderGeometry(.018, .018, .1, 8), m.chrome, [s * .22, .42, .08], null, [0, 0, Math.PI / 2]));
+    bob.add(mesh(new THREE.CylinderGeometry(.022, .02, .04, 8), m.rubber, [s * .28, .42, .08], null, [0, 0, Math.PI / 2]));
+  });
   const res = { root, lean, bob, steer, front, rear, R, tank, seat, eng };
   if (withRider) {
-    const K = buildSiki(); const r = K.root; r.scale.setScalar(.56); r.position.set(0, .5, -.26); bob.add(r);
-    K.body.rotation.x = .15;
-    K.legs.forEach((l, i) => { l.rotation.set(-.85, 0, (i ? 1 : -1) * .32); l.children[2].rotation.x = .7; });
-    K.arms.forEach((a, i) => a.rotation.set(-1.2, 0, (i ? 1 : -1) * .25));
-    K.tail.rotation.x = .25;
+    const K = poseSikiOnBike(buildSiki());
+    bob.add(K.root);
     res.rider = K;
   }
   return res;
+}
+
+/** Seat Siki on the café bike to match turnaround ref.
+ *  CRITICAL: keeps legs[i].children[2] as the foot group (game3d / animateSiki). */
+export function poseSikiOnBike(K) {
+  const r = K.root;
+  r.scale.setScalar(.56);
+  // upright on bench — hips over seat (seat ~ y 1.02, z -.4)
+  r.position.set(0, .54, -.2);
+
+  // upright torso (slight forward lean only)
+  K.body.rotation.set(.05, 0, 0);
+  if (K.head) K.head.rotation.set(-.06, 0, 0); // look along road
+
+  // legs: knees bent, feet down/forward toward engine pegs
+  // children[2] MUST remain the foot group
+  K.legs.forEach((l, i) => {
+    const s = i ? 1 : -1;
+    l.rotation.set(-1.05, s * .06, s * .42);
+    const foot = l.children[2];
+    if (!foot) return;
+    foot.rotation.set(1.05, s * -.05, s * -.12);
+    // nudge sole toward peg without replacing the group
+    foot.position.set(0, -.9, .18);
+  });
+
+  // arms: reach forward/out to handlebar grips (paws on bars)
+  K.arms.forEach((a, i) => {
+    const s = i ? 1 : -1;
+    // shoulder a bit forward toward bars
+    a.position.set(s * .38, 2.02, .12);
+    a.rotation.set(-1.42, s * .22, s * .55);
+  });
+
+  // thick tail laid over seat / rear fender (horizontal, tip slight curl)
+  K.tail.rotation.set(.62, 0, 0);
+  if (K.tail.segs) {
+    const [t0, t1, t2] = K.tail.segs;
+    // flatter cascade so mass reads over the bench, not hanging down
+    if (t0) {
+      t0.userData.base = { x: .04, y: 0, z: 0 };
+      t0.rotation.set(.04, 0, 0);
+    }
+    if (t1) {
+      t1.userData.base = { x: .1, y: 0, z: 0 };
+      t1.rotation.set(.1, 0, 0);
+    }
+    if (t2) {
+      t2.userData.base = { x: -.18, y: 0, z: 0 }; // tip curls up
+      t2.rotation.set(-.18, 0, 0);
+    }
+  }
+
+  return K;
 }
