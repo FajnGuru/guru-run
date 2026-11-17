@@ -4,6 +4,17 @@ import { GLTFLoader } from '../assets/vendor/jsm/loaders/GLTFLoader.js';
 
 export const L4_LEN = 1500;
 export const L4_HALF = 5;
+/** Inner shell of buildTunnel: vertical walls, then an elliptical arch. */
+export const L4_WALL_X = 5.35;
+export const L4_SPRING_Y = 2.15;
+export const L4_ARCH_RY = 1.85;
+/** Bike center stays this far inside the shell. */
+export const L4_WALL_INSET = 0.6;
+/** Chase camera stays this far inside the shell. */
+export const L4_CAM_MARGIN = 0.3;
+/** Rider sample height above the road before lean (pivot is the bike root). */
+export const L4_RIDER_H = 1.85;
+const L4_WALL_HIT_CD = 0.75;
 const MIN_LANE = 3.6;
 const SEAT = new THREE.Vector3(0, 1.1, -0.06);
 const GRIP_L = new THREE.Vector3(-0.36, 1.184, 0.527);
@@ -405,17 +416,99 @@ function roadTexture() {
   return t;
 }
 
+/** Half-width of the inner wall at height y. 0 above the crown. */
+export function tunnelHalfWidth(y) {
+  if (y <= L4_SPRING_Y) return L4_WALL_X;
+  const t = (y - L4_SPRING_Y) / L4_ARCH_RY;
+  if (t >= 1) return 0;
+  return L4_WALL_X * Math.sqrt(Math.max(0, 1 - t * t));
+}
+
+/**
+ * Analytic inside-test for the extruded tunnel profile.
+ * `margin` shrinks the vertical walls and the arch inward (metres).
+ */
+export function tunnelContains(x, y, margin = 0) {
+  const rx = L4_WALL_X - margin;
+  const ry = L4_ARCH_RY - margin;
+  if (rx <= 0.05) return false;
+  if (y <= L4_SPRING_Y) return Math.abs(x) <= rx;
+  if (ry <= 0.05) return false;
+  const nx = x / rx;
+  const ny = (y - L4_SPRING_Y) / ry;
+  return nx * nx + ny * ny <= 1;
+}
+
+/**
+ * Bike-center x interval so the contact point (road height) and the leaned
+ * rider both stay `L4_WALL_INSET` inside the shell.
+ */
+export function bikeLateralLimit(y, leanZ, heading = Math.PI) {
+  const roadHalf = Math.max(0.35, tunnelHalfWidth(Math.max(0, y)) - L4_WALL_INSET);
+  const yaw = heading + Math.PI;
+  const s = Math.sin(leanZ);
+  const c = Math.cos(leanZ);
+  const lx = -L4_RIDER_H * s;
+  const wy = y + L4_RIDER_H * c;
+  const wx = lx * Math.cos(yaw);
+  const riderHalf = Math.max(0, tunnelHalfWidth(wy) - L4_WALL_INSET);
+  let lo = Math.max(-roadHalf, -riderHalf - wx);
+  let hi = Math.min(roadHalf, riderHalf - wx);
+  if (!(hi >= lo)) {
+    const mid = Math.max(-roadHalf, Math.min(roadHalf, -wx));
+    lo = hi = mid;
+  }
+  return { lo, hi };
+}
+
+/**
+ * If `b` is outside the inset profile, slide it toward `a` along that segment
+ * until it is inside. Returns true when the point moved. Writes into `out`.
+ */
+export function pullInsideTunnel(ax, ay, az, bx, by, bz, margin, out) {
+  if (tunnelContains(bx, by, margin)) {
+    out.set(bx, by, bz);
+    return false;
+  }
+  let sx = ax;
+  let sy = ay;
+  let sz = az;
+  if (!tunnelContains(sx, sy, margin)) {
+    const half = Math.max(0, tunnelHalfWidth(Math.max(0, sy)) - margin - 0.02);
+    sx = Math.max(-half, Math.min(half, sx));
+    const crown = L4_SPRING_Y + Math.max(0.05, L4_ARCH_RY - margin) - 0.02;
+    if (sy > crown) sy = crown;
+    if (sy < 0.2) sy = 0.2;
+  }
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) * 0.5;
+    const x = sx + (bx - sx) * mid;
+    const y = sy + (by - sy) * mid;
+    if (tunnelContains(x, y, margin)) lo = mid;
+    else hi = mid;
+  }
+  out.set(sx + (bx - sx) * lo, sy + (by - sy) * lo, sz + (bz - sz) * lo);
+  return true;
+}
+
+const _camFocus = new THREE.Vector3();
+const _camDesired = new THREE.Vector3();
+const _camSafe = new THREE.Vector3();
+const _camLook = new THREE.Vector3();
+
 function buildTunnel(scene) {
   const profile = [];
-  profile.push([-5.35, 0]);
-  profile.push([-5.35, 2.15]);
+  profile.push([-L4_WALL_X, 0]);
+  profile.push([-L4_WALL_X, L4_SPRING_Y]);
   const arc = 7;
   for (let i = 1; i < arc; i++) {
     const ang = Math.PI * (1 - i / arc);
-    profile.push([Math.cos(ang) * 5.35, 2.15 + Math.sin(ang) * 1.85]);
+    profile.push([Math.cos(ang) * L4_WALL_X, L4_SPRING_Y + Math.sin(ang) * L4_ARCH_RY]);
   }
-  profile.push([5.35, 2.15]);
-  profile.push([5.35, 0]);
+  profile.push([L4_WALL_X, L4_SPRING_Y]);
+  profile.push([L4_WALL_X, 0]);
   const rings = 150;
   const z0 = -6;
   const z1 = L4_LEN + 16;
@@ -789,6 +882,7 @@ export async function bootLevel4(api) {
   hemi.intensity = 0.72;
   sun.intensity = 0.22;
   sun.castShadow = false;
+  camera.near = 0.05;
   camera.far = 150;
   camera.fov = 60;
   camera.updateProjectionMatrix();
@@ -840,6 +934,8 @@ export async function bootLevel4(api) {
   let hopHeld = false;
   let wobble = 0;
   let hits = 0;
+  let wallCd = 0;
+  let wallPush = 0;
   let invul = 0;
   let raceT = 0;
   let finishT = -1;
@@ -852,6 +948,15 @@ export async function bootLevel4(api) {
   let camHold = '';
   camPos.set(0, 3.2, -4);
 
+  function chaseMargin() {
+    const near = camera.near;
+    const aspect = Math.max(camera.aspect || 1, 0.5);
+    const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * near;
+    const halfW = halfH * aspect;
+    // 0.3 m inside the shell, plus the near-plane corner so the wall is not clipped.
+    return L4_CAM_MARGIN + Math.hypot(halfW, halfH);
+  }
+
   function applyChase(dt) {
     const gp = B.root.position;
     const zoom = camSet.zoom;
@@ -860,36 +965,52 @@ export async function bootLevel4(api) {
     const changed = key !== camHold;
     camHold = key;
     const snap = changed && !(camSet.mode !== 'near' && zoom === 100);
-    // Daleko at 100% is the original chase shot, unchanged.
-    if (camSet.mode !== 'near' && zoom === 100) {
-      const back = tmp.set(Math.sin(heading) * 6.2, 2.9, Math.cos(heading) * 6.2).add(gp);
-      camPos.lerp(back, 1 - Math.pow(0.01, dt));
-      camera.position.copy(camPos);
-      camera.lookAt(gp.x, gp.y + 1.5, gp.z + 3);
-      camera.fov += (58 + speed * 1.1 - camera.fov) * Math.min(1, dt * 3);
-      camera.updateProjectionMatrix();
-      return;
-    }
-    const near = camSet.mode === 'near';
-    const dist = (near ? 3.2 : 6.2) * mul;
-    const height = near ? 1.72 : 2.9;
-    const lookY = near ? 1.22 : 1.5;
-    const fovBase = near ? 42 : 58;
-    const fovKick = near ? 0.2 : 1.1;
-    if (near) {
-      const fx = -Math.sin(heading);
-      const fz = -Math.cos(heading);
-      const lookA = 0.35;
-      camPos.lerp(tmp.set(gp.x - fx * dist, gp.y + height, gp.z - fz * dist), snap ? 1 : Math.min(1, dt * 45));
-      camera.position.copy(camPos);
-      camera.lookAt(gp.x + fx * lookA, gp.y + lookY, gp.z + fz * lookA);
+    const nearMode = camSet.mode === 'near';
+    let fovTarget;
+    let alpha;
+    // Daleko at 100% keeps the original chase offsets; every mode is then kept inside the shell.
+    if (!nearMode && zoom === 100) {
+      _camDesired.set(Math.sin(heading) * 6.2, 2.9, Math.cos(heading) * 6.2).add(gp);
+      _camLook.set(gp.x, gp.y + 1.5, gp.z + 3);
+      alpha = 1 - Math.pow(0.01, dt);
+      fovTarget = 58 + speed * 1.1;
     } else {
-      const back = tmp.set(Math.sin(heading) * dist, height, Math.cos(heading) * dist).add(gp);
-      camPos.lerp(back, snap ? 1 : 1 - Math.pow(0.01, dt));
-      camera.position.copy(camPos);
-      camera.lookAt(gp.x, gp.y + lookY, gp.z + 3 * mul);
+      const dist = (nearMode ? 3.2 : 6.2) * mul;
+      const height = nearMode ? 1.72 : 2.9;
+      const lookY = nearMode ? 1.22 : 1.5;
+      const fovBase = nearMode ? 42 : 58;
+      const fovKick = nearMode ? 0.2 : 1.1;
+      if (nearMode) {
+        const fx = -Math.sin(heading);
+        const fz = -Math.cos(heading);
+        const lookA = 0.35;
+        _camDesired.set(gp.x - fx * dist, gp.y + height, gp.z - fz * dist);
+        _camLook.set(gp.x + fx * lookA, gp.y + lookY, gp.z + fz * lookA);
+        alpha = snap ? 1 : Math.min(1, dt * 45);
+      } else {
+        _camDesired.set(Math.sin(heading) * dist, height, Math.cos(heading) * dist).add(gp);
+        _camLook.set(gp.x, gp.y + lookY, gp.z + 3 * mul);
+        alpha = snap ? 1 : 1 - Math.pow(0.01, dt);
+      }
+      fovTarget = fovBase + speed * fovKick;
     }
-    camera.fov += (fovBase + speed * fovKick - camera.fov) * Math.min(1, dt * 3);
+    camera.near = 0.05;
+    camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 3);
+    const margin = chaseMargin();
+    _camFocus.set(gp.x, gp.y + 1.35, gp.z);
+    const pulled = pullInsideTunnel(
+      _camFocus.x, _camFocus.y, _camFocus.z,
+      _camDesired.x, _camDesired.y, _camDesired.z,
+      margin, _camSafe,
+    );
+    const smooth = 1 - Math.pow(0.001, dt);
+    const k = snap ? 1 : (pulled ? Math.min(alpha, smooth) : alpha);
+    camPos.lerp(_camSafe, k);
+    if (!tunnelContains(camPos.x, camPos.y, margin)) {
+      pullInsideTunnel(_camFocus.x, _camFocus.y, _camFocus.z, camPos.x, camPos.y, camPos.z, margin, camPos);
+    }
+    camera.position.copy(camPos);
+    camera.lookAt(_camLook);
     camera.updateProjectionMatrix();
   }
 
@@ -918,6 +1039,10 @@ export async function bootLevel4(api) {
     cam: camSet.mode, zoom: camSet.zoom,
     camDist: camera.position.distanceTo(B.root.position),
     camY: camera.position.y, camAhead: B.root.position.z - camera.position.z, fov: camera.fov,
+    camX: camera.position.x, camZ: camera.position.z,
+    camInside: tunnelContains(camera.position.x, camera.position.y, L4_CAM_MARGIN),
+    camNear: camera.near,
+    heading, lean: B.lean.rotation.z,
   });
   window.__l4 = state;
   window.__l4obs = obs;
@@ -971,6 +1096,11 @@ export async function bootLevel4(api) {
       B.bob.position.y = Math.sin(now / 280) * 0.01;
       const back = tmp.set(Math.sin(heading) * 6.4, 2.7, Math.cos(heading) * 6.4).add(gp);
       camPos.lerp(back, 0.04);
+      camera.near = 0.05;
+      _camFocus.set(gp.x, gp.y + 1.35, gp.z);
+      if (!tunnelContains(camPos.x, camPos.y, chaseMargin())) {
+        pullInsideTunnel(_camFocus.x, _camFocus.y, _camFocus.z, camPos.x, camPos.y, camPos.z, chaseMargin(), camPos);
+      }
       camera.position.copy(camPos);
       camera.lookAt(gp.x, gp.y + 1.35, gp.z + 2);
       renderer.render(scene, camera);
@@ -991,8 +1121,27 @@ export async function bootLevel4(api) {
     heading = THREE.MathUtils.clamp(heading, Math.PI - 0.7, Math.PI + 0.7);
     gp.x += -Math.sin(heading) * speed * dt;
     gp.z += -Math.cos(heading) * speed * dt;
-    gp.x = THREE.MathUtils.clamp(gp.x, -L4_HALF + 0.45, L4_HALF - 0.45);
     gp.z = Math.max(gp.z, -1);
+    if (wallPush) {
+      gp.x += wallPush * dt;
+      wallPush *= Math.exp(-dt * 4.5);
+      if (Math.abs(wallPush) < 0.05) wallPush = 0;
+    }
+    const lim = bikeLateralLimit(gp.y, B.lean.rotation.z, heading);
+    let into = 0;
+    if (gp.x > lim.hi) { gp.x = lim.hi; into = 1; }
+    else if (gp.x < lim.lo) { gp.x = lim.lo; into = -1; }
+    wallCd = Math.max(0, wallCd - dt);
+    if (into && finishT < 0 && wallCd <= 0) {
+      wallCd = L4_WALL_HIT_CD;
+      wallPush = -into * (2.1 + Math.min(speed, 16) * 0.05);
+      speed = speed > 8 ? Math.max(8, speed * 0.92) : speed * 0.92;
+      heading = THREE.MathUtils.clamp(heading - into * 0.18, Math.PI - 0.7, Math.PI + 0.7);
+      gp.x = Math.min(lim.hi, Math.max(lim.lo, gp.x - into * 0.1));
+      hits++;
+      if (elB) elB.textContent = 'Nárazy ' + hits;
+      showToast('Náraz!');
+    }
     const jp = keys.Space || inp.jumpTouch;
     if (jp && !hopHeld && grounded && finishT < 0) {
       vy = 6.5;
@@ -1015,6 +1164,12 @@ export async function bootLevel4(api) {
     const leanT = turn * (0.34 + 0.4 * spdF) * feel;
     const hitWob = Math.sin(now / 48) * 0.3 * wobble;
     B.lean.rotation.z += (leanT + hitWob - B.lean.rotation.z) * Math.min(1, dt * 7);
+    // Re-clamp after lean and jump so the rendered pose stays inside the shell.
+    {
+      const limNow = bikeLateralLimit(gp.y, B.lean.rotation.z, heading);
+      if (gp.x > limNow.hi) gp.x = limNow.hi;
+      else if (gp.x < limNow.lo) gp.x = limNow.lo;
+    }
     const pitchT = (thr ? -0.045 * Math.max(spdF, 0.25) : brk ? 0.055 : 0) * feel;
     B.lean.rotation.x += (pitchT - B.lean.rotation.x) * Math.min(1, dt * 5.5);
     const vibY = grounded
