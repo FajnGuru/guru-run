@@ -6,7 +6,7 @@ import { buildBird, flap } from './bird-model.js';
 import { buildSiki, animateSiki } from './siki-model.js';
 import { buildMotorbike } from './motorbike-model.js';
 const _lvQ = new URLSearchParams(location.search).get('level');
-const LEVEL = _lvQ === '3' ? 3 : _lvQ === '2' ? 2 : 1;
+const LEVEL = _lvQ === '4' ? 4 : _lvQ === '3' ? 3 : _lvQ === '2' ? 2 : 1;
 const wrap = document.getElementById('wrap'), stage = document.getElementById('stage');
 const mobile = matchMedia('(pointer:coarse)').matches;
 const GFX_KEY = 'guru-run-gfx';
@@ -316,9 +316,10 @@ if (pad) {
     btn.addEventListener('pointercancel', end);
   });
 }
-runB.addEventListener('pointerdown', e => { if (LEVEL === 2) { runTouch = true; runB.classList.add('on'); runB.setPointerCapture(e.pointerId); return; } runTouch = !runTouch; runB.classList.toggle('on', runTouch); });
-['pointerup', 'pointercancel'].forEach(t => runB.addEventListener(t, () => { if (LEVEL === 2) { runTouch = false; runB.classList.remove('on'); } }));
-if (LEVEL === 2) runB.textContent = 'Plyn';
+const bikeLvl = LEVEL === 2 || LEVEL === 4;
+runB.addEventListener('pointerdown', e => { if (bikeLvl) { runTouch = true; runB.classList.add('on'); runB.setPointerCapture(e.pointerId); return; } runTouch = !runTouch; runB.classList.toggle('on', runTouch); });
+['pointerup', 'pointercancel'].forEach(t => runB.addEventListener(t, () => { if (bikeLvl) { runTouch = false; runB.classList.remove('on'); } }));
+if (bikeLvl) runB.textContent = 'Plyn';
 const jumpB = document.getElementById('jump'); let jumpTouch = false;
 jumpB.addEventListener('pointerdown', e => { jumpTouch = true; jumpB.classList.add('on'); jumpB.setPointerCapture(e.pointerId); });
 ['pointerup', 'pointercancel'].forEach(t => jumpB.addEventListener(t, () => { jumpTouch = false; jumpB.classList.remove('on'); }));
@@ -489,7 +490,7 @@ function updateFiskuleLead(dt, now) {
     fState = 'leadEnd'; cut = true; cutSkip = false; fT = 0; fSpeed = 0; fVy = 0; fp.y = 0;
     compassEl.classList.remove('on'); compassEl.style.opacity = '';
     birds.forEach(b => { if (b.state === 'tele' || b.state === 'dive') { b.state = 'circle'; b.mark.visible = false; } });
-    bubble.innerHTML = 'Zvládli jsme to! 🐰🌲<br>Mýtina je naše — les máš za sebou.<br>Level 4 už brzy…<small>ťukni nebo stiskni klávesu</small>';
+    bubble.innerHTML = 'Zvládli jsme to! 🐰🌲<br>Mýtina je naše — les máš za sebou.<br>Level 4: tunel na motorce — tlačítko dole.<small>ťukni nebo stiskni klávesu</small>';
     bubble.classList.add('on');
     if (navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(30);
     return;
@@ -1349,3 +1350,11 @@ function buildForestClearing() {
 
 if (LEVEL === 2) startLevel2();
 if (LEVEL === 3) startLevel3();
+if (LEVEL === 4) {
+  import('./level4.js').then(({ bootLevel4 }) => bootLevel4({
+    scene, camera, renderer, sun, hemi,
+    buildMotorbike, attachCharLights, syncCharLights, makeGroundBlob, syncBikeWheelBlob,
+    keys, input: () => ({ jx, jy, runTouch, jumpTouch }), showToast, getGfx: () => gfxMode,
+    setBike: (b) => { B = b; guru = b.root; }, GRAV, camPos, tmp,
+  })).catch((err) => console.error(err));
+}
