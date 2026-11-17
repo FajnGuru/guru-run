@@ -225,6 +225,10 @@ export function prepareRider(gltf) {
   const pelvis = bag.pelvis[0] || scene;
   const head = bag.head[0] || null;
   const spine = pickSpine(bag.spine);
+  const spines = bag.spine.slice().sort((a, b) => {
+    const rank = (n) => (/lower/i.test(n) ? 0 : /upper/i.test(n) ? 2 : 1);
+    return rank(a.name) - rank(b.name);
+  });
   const limbs = [];
   for (const side of ['L', 'R']) {
     if (bag.thigh[side] && bag.calf[side]) {
@@ -246,7 +250,7 @@ export function prepareRider(gltf) {
     jumpAction.clampWhenFinished = true;
   }
   const rider = {
-    scene, mixer, pelvis, head, spine, limbs,
+    scene, mixer, pelvis, head, spine, spines, limbs,
     poseKind: poseKind === 'ik' ? 'ik' : (crouchClip ? 'crouch' : 'place'),
     jumpAction, jumpName: jumpClip ? jumpClip.name : null,
     crouchClip, idleClip, mode: 'ride', mount: null, base: new THREE.Vector3(), abduct: 0,
@@ -371,13 +375,12 @@ function plantError(rider, kind) {
 
 /** Lean the chest forward until the hands reach the grips, without leaving the pegs. */
 function reachHands(rider) {
-  if (!(rider.limbs || []).some((l) => l.kind === 'arm') || !rider.spine) return;
-  let pitch = rider.torsoPitch ?? 0.62;
-  // Cap the tuck so the chest stays off the tank. Arms on this rig are short of the bars.
-  for (; pitch <= 1.05; pitch += 0.05) {
+  if (!(rider.limbs || []).some((l) => l.kind === 'arm') || !(rider.spines?.length || rider.spine)) return;
+  let pitch = rider.torsoPitch ?? 0.8;
+  for (; pitch <= 1.25; pitch += 0.05) {
     rider.torsoPitch = pitch;
     applyRidePose(rider, 0);
-    if (plantError(rider, 'arm') <= 0.025) return;
+    if (plantError(rider, 'arm') <= 0.02) return;
   }
 }
 
@@ -452,21 +455,310 @@ function spreadLegs(rider, proxies) {
   applyRidePose(rider, 0);
 }
 
-/** Pose, then seat and spread once. Per-frame riding reuses the stored pitch and abduction. */
-function settleRider(rider, bike) {
-  rider.torsoPitch = rider.torsoPitch ?? 0.62;
-  rider.abduct = 0;
+/** Signed gap: positive when the sphere is clear of the box, negative when it penetrates. */
+function sphereGap(sphere, proxy) {
+  const box = proxy.localBox;
+  const size = box.getSize(new THREE.Vector3());
+  const localCenter = box.getCenter(new THREE.Vector3());
+  const mw = proxy.obj.matrixWorld;
+  const e = mw.elements;
+  const ax = new THREE.Vector3(e[0], e[1], e[2]);
+  const ay = new THREE.Vector3(e[4], e[5], e[6]);
+  const az = new THREE.Vector3(e[8], e[9], e[10]);
+  const sx = ax.length() || 1;
+  const sy = ay.length() || 1;
+  const sz = az.length() || 1;
+  ax.multiplyScalar(1 / sx);
+  ay.multiplyScalar(1 / sy);
+  az.multiplyScalar(1 / sz);
+  const worldCenter = localCenter.applyMatrix4(mw);
+  const hx = size.x * 0.5 * sx;
+  const hy = size.y * 0.5 * sy;
+  const hz = size.z * 0.5 * sz;
+  const d = sphere.center.clone().sub(worldCenter);
+  const lx = d.dot(ax);
+  const ly = d.dot(ay);
+  const lz = d.dot(az);
+  const dx = lx - THREE.MathUtils.clamp(lx, -hx, hx);
+  const dy = ly - THREE.MathUtils.clamp(ly, -hy, hy);
+  const dz = lz - THREE.MathUtils.clamp(lz, -hz, hz);
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist > 1e-5) return dist - sphere.radius;
+  const pen = Math.min(hx - Math.abs(lx), hy - Math.abs(ly), hz - Math.abs(lz));
+  return -(pen + sphere.radius);
+}
+
+function legClearance(rider, proxies) {
+  const out = { thighTank: Infinity, thighSeat: Infinity, thighEngine: Infinity, calfTank: Infinity, calfSeat: Infinity, calfEngine: Infinity };
+  const spheres = limbSpheres(rider);
+  for (const s of spheres) {
+    if (s.part !== 'thigh' && s.part !== 'calf') continue;
+    for (const p of proxies) {
+      if (p.kind !== 'tank' && p.kind !== 'seat' && p.kind !== 'engine') continue;
+      const key = s.part + (p.kind === 'tank' ? 'Tank' : p.kind === 'seat' ? 'Seat' : 'Engine');
+      out[key] = Math.min(out[key], sphereGap(s, p));
+    }
+  }
+  const nums = Object.values(out).filter((n) => Number.isFinite(n));
+  out.min = nums.length ? Math.min(...nums) : null;
+  return out;
+}
+
+function worldArmReach(limb) {
+  const ws = new THREE.Vector3();
+  limb.upper.getWorldScale(ws);
+  const s = Math.max(Math.abs(ws.x), Math.abs(ws.y), Math.abs(ws.z), 1e-4);
+  return (limb.lower.position.length() + limb.end.position.length()) * s;
+}
+
+function barParts(steer) {
+  return steer.children.filter((o) => o.position.y > 0.15 && !o.userData.l4Debug && o.name !== 'l4-proxy');
+}
+
+function rememberBars(steer) {
+  if (steer.userData.l4BarBase) {
+    for (const [o, p] of steer.userData.l4BarBase) o.position.copy(p);
+    steer.userData.l4BarShift = new THREE.Vector3();
+    return;
+  }
+  const map = new Map();
+  for (const o of barParts(steer)) map.set(o, o.position.clone());
+  steer.userData.l4BarBase = map;
+  steer.userData.l4BarShift = new THREE.Vector3();
+}
+
+/** Slide the Level 4 bars back toward the seat until both hands can reach them. */
+function pullBarsToReach(rider, bike) {
+  const steer = bike.steer;
+  const bob = rider.anchors?.bob;
+  if (!steer || !bob) return 0;
+  rememberBars(steer);
   applyRidePose(rider, 0);
+  bob.updateWorldMatrix(true, true);
+  const fwd = new THREE.Vector3(0, 0, 1).transformDirection(bob.matrixWorld);
+  let pull = 0;
+  const shoulder = new THREE.Vector3();
+  const grip = new THREE.Vector3();
+  for (const limb of rider.limbs) {
+    if (limb.kind !== 'arm') continue;
+    const anchor = limb.side === 'L' ? rider.anchors.gripL : rider.anchors.gripR;
+    if (!anchor) continue;
+    limb.upper.getWorldPosition(shoulder);
+    anchor.getWorldPosition(grip);
+    const to = grip.clone().sub(shoulder);
+    const along = to.dot(fwd);
+    const lateral2 = Math.max(0, to.lengthSq() - along * along);
+    const reach = worldArmReach(limb) * 0.9;
+    const maxAlong = Math.sqrt(Math.max(0, reach * reach - lateral2));
+    const desired = Math.max(Math.min(along, maxAlong), Math.min(along, 0.16));
+    pull = Math.max(pull, along - desired);
+  }
+  pull = THREE.MathUtils.clamp(pull, 0, 0.42);
+  if (pull < 0.005) {
+    rider.barPull = 0;
+    return 0;
+  }
+  const worldDelta = fwd.clone().multiplyScalar(-pull);
+  const q = new THREE.Quaternion();
+  steer.getWorldQuaternion(q);
+  const localDelta = worldDelta.applyQuaternion(q.invert());
+  for (const [o, base] of steer.userData.l4BarBase) o.position.copy(base).add(localDelta);
+  steer.userData.l4BarShift = localDelta.clone();
+  rider.barPull = pull;
+  applyRidePose(rider, 0);
+  return pull;
+}
+
+function captureTank(tank) {
+  if (tank.userData.l4Base) return;
+  tank.updateWorldMatrix(true, true);
+  const box = localAabbOf(tank);
+  const nose = new THREE.Vector3(0, 0, box.max.z);
+  tank.localToWorld(nose);
+  if (tank.parent) tank.parent.worldToLocal(nose);
+  tank.userData.l4Base = {
+    position: tank.position.clone(),
+    scale: tank.scale.clone(),
+    box,
+    noseParentZ: nose.z,
+  };
+  tank.traverse((o) => {
+    if (o.isMesh && o.geometry?.type === 'PlaneGeometry') o.userData.l4LogoScale = o.scale.clone();
+  });
+}
+
+function resetTank(tank) {
+  captureTank(tank);
+  const base = tank.userData.l4Base;
+  tank.position.copy(base.position);
+  tank.scale.copy(base.scale);
+  tank.traverse((o) => {
+    if (o.userData.l4LogoScale) o.scale.copy(o.userData.l4LogoScale);
+  });
+}
+
+function keepTankNose(tank) {
+  const base = tank.userData.l4Base;
+  if (!base) return;
+  tank.updateWorldMatrix(true, false);
+  const nose = new THREE.Vector3(0, 0, base.box.max.z);
+  tank.localToWorld(nose);
+  if (tank.parent) tank.parent.worldToLocal(nose);
+  tank.position.z += base.noseParentZ - nose.z;
+  tank.traverse((o) => {
+    if (!o.userData.l4LogoScale) return;
+    o.scale.copy(o.userData.l4LogoScale);
+    o.scale.x = o.userData.l4LogoScale.x / Math.max(0.35, tank.scale.z);
+  });
+}
+
+function narrowTank(rider, tank) {
+  resetTank(tank);
+  const base = tank.userData.l4Base;
+  const half = Math.max(0.05, (base.box.max.x - base.box.min.x) * 0.5 * base.scale.x);
+  let hip = half;
+  const left = rider.limbs.find((l) => l.kind === 'leg' && l.side === 'L');
+  const right = rider.limbs.find((l) => l.kind === 'leg' && l.side === 'R');
+  if (left && right) {
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const side = new THREE.Vector3(1, 0, 0);
+    if (rider.anchors?.bob) side.transformDirection(rider.anchors.bob.matrixWorld);
+    left.upper.getWorldPosition(a);
+    right.upper.getWorldPosition(b);
+    hip = Math.abs(a.sub(b).dot(side)) * 0.5;
+  }
+  const spheres = limbSpheres(rider).filter((s) => s.part === 'thigh');
+  const thighR = spheres.length ? spheres.reduce((m, s) => m + s.radius, 0) / spheres.length : 0.08;
+  const target = THREE.MathUtils.clamp(hip - thighR - 0.02, half * 0.62, half);
+  tank.scale.x = base.scale.x * (target / half);
+  tank.scale.y = base.scale.y;
+  tank.scale.z = base.scale.z;
+  keepTankNose(tank);
+  rider.tankScaleX = tank.scale.x;
+}
+
+function shortenTankUntilClear(rider, bike) {
+  const tank = bike.tank;
+  captureTank(tank);
+  rider.tankShortened = false;
+  const gaps = () => {
+    tank.updateWorldMatrix(true, true);
+    bike.seat?.updateWorldMatrix(true, true);
+    bike.eng?.updateWorldMatrix(true, true);
+    return legClearance(rider, buildBikeProxies(bike));
+  };
+  for (let step = 0; step < 14; step++) {
+    const gap = gaps();
+    if (Math.min(gap.thighTank, gap.calfTank) >= 0.012) break;
+    if (tank.scale.z <= 0.42) break;
+    rider.tankShortened = true;
+    tank.scale.z = Math.max(0.42, tank.scale.z * 0.88);
+    keepTankNose(tank);
+  }
+  for (let step = 0; step < 12; step++) {
+    const gap = gaps();
+    const seatHit = Math.min(gap.thighSeat, gap.calfSeat);
+    const engHit = Math.min(gap.thighEngine, gap.calfEngine);
+    if (seatHit >= 0.01 && engHit >= 0.01) break;
+    if ((rider.abduct || 0) >= 1.5) break;
+    const before = plantError(rider, 'leg');
+    rider.abduct = (rider.abduct || 0) + 0.1;
+    applyRidePose(rider, 0);
+    if (plantError(rider, 'leg') > 0.045 && plantError(rider, 'leg') > before + 0.02) {
+      rider.abduct -= 0.1;
+      applyRidePose(rider, 0);
+      break;
+    }
+  }
+  rider.tankScaleZ = tank.scale.z;
+  return buildBikeProxies(bike);
+}
+
+function pegParts(bob, anchors) {
+  if (bob.userData.l4Pegs) {
+    for (const [o, p] of bob.userData.l4Pegs) o.position.copy(p);
+    return bob.userData.l4Pegs;
+  }
+  const map = new Map();
+  for (const o of bob.children) {
+    if (!o.isMesh || o.userData.l4Debug) continue;
+    const nearY = Math.abs(o.position.y - 0.42) < 0.05;
+    const nearZ = Math.abs(o.position.z - 0.08) < 0.06;
+    const outX = Math.abs(o.position.x) > 0.16 && Math.abs(o.position.x) < 0.36;
+    if (nearY && nearZ && outX) map.set(o, o.position.clone());
+  }
+  if (anchors?.pegL) map.set(anchors.pegL, anchors.pegL.position.clone());
+  if (anchors?.pegR) map.set(anchors.pegR, anchors.pegR.position.clone());
+  bob.userData.l4Pegs = map;
+  return map;
+}
+
+/** Raise and tuck the Level 4 pegs so a rider sat back on the seat can bend the knee. */
+function placePegs(rider) {
+  const bob = rider.anchors?.bob;
+  if (!bob) return;
+  const map = pegParts(bob, rider.anchors);
+  applyRidePose(rider, 0);
+  const leg = rider.limbs.find((l) => l.kind === 'leg');
+  if (!leg) return;
+  const reach = (leg.lower.position.length() + leg.end.position.length()) * (rider.scale || 1);
+  for (const side of ['L', 'R']) {
+    const limb = rider.limbs.find((l) => l.kind === 'leg' && l.side === side);
+    const anchor = side === 'L' ? rider.anchors.pegL : rider.anchors.pegR;
+    const base = map.get(anchor);
+    if (!limb || !anchor || !base) continue;
+    const hip = new THREE.Vector3();
+    limb.upper.getWorldPosition(hip);
+    const sign = side === 'R' ? 1 : -1;
+    const target = new THREE.Vector3(
+      sign * THREE.MathUtils.clamp(Math.abs(hip.x) + 0.16, 0.22, 0.34),
+      THREE.MathUtils.clamp(hip.y - reach * 0.58, 0.5, 0.68),
+      THREE.MathUtils.clamp(hip.z + reach * 0.22, hip.z + 0.06, hip.z + 0.32),
+    );
+    const local = bob.worldToLocal(target.clone());
+    const delta = local.sub(base);
+    delta.x = THREE.MathUtils.clamp(delta.x, -0.06, 0.06);
+    delta.y = THREE.MathUtils.clamp(delta.y, 0, 0.22);
+    delta.z = THREE.MathUtils.clamp(delta.z, -0.18, 0.02);
+    anchor.position.copy(base).add(delta);
+    for (const [o, p] of map) {
+      if (o === rider.anchors.pegL || o === rider.anchors.pegR) continue;
+      if (Math.sign(p.x) !== sign) continue;
+      o.position.copy(p).add(delta);
+    }
+  }
+  applyRidePose(rider, 0);
+}
+
+/**
+ * Sit back on the seat, tuck toward bars brought closer, bend the legs onto
+ * the pegs, then narrow and shorten the Level 4 tank until the leg spheres clear.
+ */
+function settleRider(rider, bike) {
+  rider.torsoPitch = 0.85;
+  rider.abduct = 0.28;
+  rider.tankShortened = false;
+  applyRidePose(rider, 0);
+  if (bike?.steer) pullBarsToReach(rider, bike);
   reachHands(rider);
   const fitted = bike?.seat ? liftToSeat(rider, bike.seat) : false;
+  placePegs(rider);
+  if (bike?.seat) liftToSeat(rider, bike.seat);
+  if (bike?.steer) pullBarsToReach(rider, bike);
   reachHands(rider);
+  if (bike?.tank) narrowTank(rider, bike.tank);
   let proxies = null;
   if (rider.poseKind === 'ik' && bike?.tank && bike?.eng && bike?.steer) {
     proxies = buildBikeProxies(bike);
     spreadLegs(rider, proxies);
     if (bike.seat) liftToSeat(rider, bike.seat);
+    proxies = shortenTankUntilClear(rider, bike);
     reachHands(rider);
+    if (bike.seat) liftToSeat(rider, bike.seat);
   }
+  rider.tankScaleX = bike?.tank?.scale.x ?? null;
+  rider.tankScaleZ = bike?.tank?.scale.z ?? null;
   rider.base.copy(rider.mount.position);
   applyRidePose(rider, 0);
   return { fitted, proxies };
@@ -500,18 +792,29 @@ function buildBikeProxies(bike) {
     const localBox = localAabbOf(obj);
     if (localBox) proxies.push({ obj, kind, localBox });
   }
-  if (bike.steer) proxies.push({ obj: bike.steer, kind: 'handlebar', localBox: HANDLE_BOX.clone() });
+  if (bike.steer) {
+    const bar = HANDLE_BOX.clone();
+    const shift = bike.steer.userData.l4BarShift;
+    if (shift) { bar.min.add(shift); bar.max.add(shift); }
+    proxies.push({ obj: bike.steer, kind: 'handlebar', localBox: bar });
+  }
   return proxies;
 }
 
 function meshCrossRadius(meshes, fallback) {
-  if (!meshes.length) return fallback;
-  const box = new THREE.Box3();
-  for (const m of meshes) box.expandByObject(m);
-  if (box.isEmpty()) return fallback;
-  const s = box.getSize(new THREE.Vector3());
-  const minDim = Math.min(s.x, s.y, s.z);
-  return THREE.MathUtils.clamp(minDim * 0.42, 0.035, 0.16);
+  let radius = fallback;
+  const size = new THREE.Vector3();
+  const ws = new THREE.Vector3();
+  for (const m of meshes) {
+    const geo = m.geometry;
+    if (!geo) continue;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    geo.boundingBox.getSize(size);
+    m.getWorldScale(ws);
+    const dims = [size.x * Math.abs(ws.x), size.y * Math.abs(ws.y), size.z * Math.abs(ws.z)].sort((a, b) => a - b);
+    radius = Math.max(radius, (dims[0] + dims[1]) * 0.25);
+  }
+  return THREE.MathUtils.clamp(radius || fallback, 0.035, 0.11);
 }
 
 function limbSpheres(rider) {
@@ -704,12 +1007,53 @@ function measureSeatFit(rider, bike, proxies) {
     if (limb.kind === 'leg') foot = Math.max(foot, err);
     else hand = Math.max(hand, err);
   }
+  const clr = proxies?.length ? legClearance(rider, proxies) : null;
   return {
     gap, tank, engine, foot, hand,
     abduct: rider.abduct || 0,
     baseY: rider.base?.y ?? null,
     fitted: rider.seatFitted === true,
+    thighTank: clr?.thighTank ?? null,
+    thighSeat: clr?.thighSeat ?? null,
+    thighEngine: clr?.thighEngine ?? null,
+    calfTank: clr?.calfTank ?? null,
+    calfSeat: clr?.calfSeat ?? null,
+    calfEngine: clr?.calfEngine ?? null,
+    clearMin: clr?.min ?? null,
+    tankShortened: rider.tankShortened === true,
+    tankScaleX: rider.tankScaleX ?? null,
+    tankScaleZ: rider.tankScaleZ ?? null,
+    barPull: rider.barPull ?? 0,
+    pitch: rider.torsoPitch ?? null,
   };
+}
+
+/**
+ * Bob-local pelvis target: as far back on the seat as the legs can still
+ * plant on the pegs. The tank is shortened afterward so this spot sits behind it.
+ */
+function seatTargetBob(bob, seat, rider) {
+  bob.updateWorldMatrix(true, true);
+  const seatBox = new THREE.Box3().setFromObject(seat);
+  if (seatBox.isEmpty()) return null;
+  const center = seatBox.getCenter(new THREE.Vector3());
+  const peg = rider?.anchors?.pegL;
+  const pegW = new THREE.Vector3();
+  if (peg) peg.getWorldPosition(pegW);
+  else pegW.set(center.x, seatBox.min.y, center.z + 0.45);
+  const leg = rider?.limbs?.find((l) => l.kind === 'leg');
+  const scale = rider?.mount?.scale?.x || rider?.scale || 1;
+  const reach = leg ? (leg.lower.position.length() + leg.end.position.length()) * scale * 0.97 : 0.7;
+  const dy = seatBox.max.y + 0.06 - pegW.y;
+  const horiz = Math.sqrt(Math.max(0, reach * reach - dy * dy));
+  const dz = Math.sqrt(Math.max(0, horiz * horiz - 0.1 * 0.1));
+  let z = pegW.z - dz;
+  z = THREE.MathUtils.clamp(z, seatBox.min.z + 0.08, seatBox.max.z - 0.06);
+  const ray = new THREE.Raycaster(new THREE.Vector3(center.x, seatBox.max.y + 0.5, z), new THREE.Vector3(0, -1, 0));
+  const hits = ray.intersectObject(seat, true);
+  const world = hits.length ? hits[0].point.clone() : new THREE.Vector3(center.x, seatBox.max.y, z);
+  world.y += 0.1;
+  return bob.worldToLocal(world);
 }
 
 export function seatOnBike(rider, bob, anchors, bike = null) {
@@ -732,14 +1076,15 @@ export function seatOnBike(rider, bob, anchors, bike = null) {
   );
   mount.scale.setScalar(scale);
   mount.rotation.y = yaw;
+  rider.anchors = anchors;
+  rider.scale = scale;
   const pelvisL = new THREE.Vector3();
   rider.pelvis.getWorldPosition(pelvisL);
   pelvisL.multiplyScalar(scale).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-  mount.position.set(SEAT.x - pelvisL.x, SEAT.y - pelvisL.y, SEAT.z - pelvisL.z);
+  const seatPt = (bike?.seat && seatTargetBob(bob, bike.seat, rider)) || SEAT;
+  mount.position.set(seatPt.x - pelvisL.x, seatPt.y - pelvisL.y, seatPt.z - pelvisL.z);
   rider.base.copy(mount.position);
   mount.add(scene);
-  rider.anchors = anchors;
-  rider.scale = scale;
   rider.abduct = 0;
   if (rider.poseKind === 'crouch' && rider.crouchClip) {
     const act = rider.mixer.clipAction(rider.crouchClip);
@@ -768,6 +1113,41 @@ export function seatOnBike(rider, bob, anchors, bike = null) {
   return mount;
 }
 
+function applyTorso(rider, lean) {
+  const spines = (rider.spines && rider.spines.length ? rider.spines : (rider.spine ? [rider.spine] : []));
+  const total = rider.torsoPitch ?? 0.85;
+  spines.forEach((s, i) => {
+    const share = spines.length === 1 ? total : (i === 0 ? total * 0.55 : total * 0.45 / Math.max(1, spines.length - 1));
+    const roll = i === spines.length - 1 ? -lean * 0.4 : 0;
+    const extra = new THREE.Quaternion().setFromEuler(new THREE.Euler(share, 0, roll, 'XYZ'));
+    s.quaternion.copy(s.userData._bind.q).multiply(extra);
+  });
+  lookAhead(rider);
+}
+
+/** Keep the head upright, looking along the bike, while the chest tucks. */
+function lookAhead(rider) {
+  const head = rider.head;
+  if (!head?.parent || !head.userData._bind) return;
+  head.quaternion.copy(head.userData._bind.q);
+  head.updateWorldMatrix(true, false);
+  const parentQ = new THREE.Quaternion();
+  head.parent.getWorldQuaternion(parentQ);
+  const bindFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(head.userData._bind.q).normalize();
+  const bob = rider.anchors?.bob;
+  const ahead = new THREE.Vector3(0, 0.15, 1);
+  if (bob) {
+    const fwd = new THREE.Vector3(0, 0, 1).transformDirection(bob.matrixWorld);
+    const up = new THREE.Vector3(0, 1, 0).transformDirection(bob.matrixWorld);
+    ahead.copy(fwd).addScaledVector(up, 0.18).normalize();
+  } else ahead.normalize();
+  const desiredLocal = ahead.applyQuaternion(parentQ.clone().invert());
+  if (desiredLocal.lengthSq() < 1e-6 || bindFwd.lengthSq() < 1e-6) return;
+  desiredLocal.normalize();
+  const align = new THREE.Quaternion().setFromUnitVectors(bindFwd, desiredLocal);
+  head.quaternion.copy(align.multiply(head.userData._bind.q));
+}
+
 function anchorWorld(obj, out) {
   obj.getWorldPosition(out);
   return out;
@@ -789,14 +1169,7 @@ export function applyRidePose(rider, lean) {
     return;
   }
   restoreBind(scene);
-  if (rider.spine) {
-    const extra = new THREE.Quaternion().setFromEuler(new THREE.Euler(rider.torsoPitch ?? 0.62, 0, -lean * 0.55, 'XYZ'));
-    rider.spine.quaternion.copy(rider.spine.userData._bind.q).multiply(extra);
-  }
-  if (rider.head) {
-    const extra = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.22, -lean * 0.35, 0, 'XYZ'));
-    rider.head.quaternion.copy(rider.head.userData._bind.q).multiply(extra);
-  }
+  applyTorso(rider, lean);
   scene.updateMatrixWorld(true);
   const anchors = rider.anchors;
   if (!anchors) return;
@@ -1568,6 +1941,12 @@ export async function bootLevel4(api) {
       abduct: rider.abduct || 0, baseY: rider.base.y, fitted: rider.seatFitted === true,
       gap: fit.gap ?? null, tank: fit.tank ?? null, engine: fit.engine ?? null,
       foot: fit.foot ?? null, hand: fit.hand ?? null,
+      thighTank: fit.thighTank ?? null, thighSeat: fit.thighSeat ?? null, thighEngine: fit.thighEngine ?? null,
+      calfTank: fit.calfTank ?? null, calfSeat: fit.calfSeat ?? null, calfEngine: fit.calfEngine ?? null,
+      clearMin: fit.clearMin ?? null,
+      tankShortened: fit.tankShortened === true,
+      tankScaleX: fit.tankScaleX ?? null, tankScaleZ: fit.tankScaleZ ?? null,
+      barPull: fit.barPull ?? 0, pitch: fit.pitch ?? null,
     };
   }
 
