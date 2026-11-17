@@ -643,30 +643,71 @@ function pickerCss() {
 #l4pick .card.on{border-color:#ffd24a;box-shadow:0 0 0 2px rgba(255,210,74,.35)}
 #l4pick .card b{font-size:18px}
 #l4pick .card small{opacity:.7;font-size:12px;text-align:center}
-#l4pick canvas{width:100%;height:180px;display:block;border-radius:10px;background:radial-gradient(#243044,#0c1016)}
+#l4pick canvas{width:100%;height:248px;display:block;border-radius:10px;background:radial-gradient(#243044,#0c1016)}
 #l4pick .go{margin-top:14px;width:100%;min-height:52px;border:0;border-radius:12px;background:#4f7a3a;color:#fff;font:bold 20px sans-serif;touch-action:manipulation}
 #l4pick .go:disabled{opacity:.45}
 #l4pick .hint{margin:8px 0 0;font-size:12px;opacity:.6;text-align:center}
 #l4pick .err{color:#ff8d7a;font-size:14px;min-height:1.2em;text-align:center}
 #l4pick label.card{position:relative}
 #l4pick label.card input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+#l4setBtn{position:absolute;right:14px;top:58px;z-index:6;min-height:44px;padding:8px 14px;border-radius:10px;border:2px solid rgba(255,255,255,.55);background:rgba(0,0,0,.45);color:#fff;font:bold 15px sans-serif;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#l4set{position:fixed;inset:0;z-index:28;display:none;align-items:center;justify-content:center;background:rgba(6,8,12,.55);padding:16px;box-sizing:border-box}
+#l4set.on{display:flex}
+#l4set .sheet{width:min(420px,100%);background:#141820;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);touch-action:manipulation}
+#l4set h3{margin:0 0 12px;color:#ffd24a;font-size:22px}
+#l4set .k{margin:0 0 8px;font-size:13px;letter-spacing:.04em;opacity:.75}
+#l4set .modes{display:flex;gap:8px;flex-wrap:wrap}
+#l4set .modes button{flex:1 1 140px;min-height:48px;border-radius:12px;border:2px solid rgba(255,255,255,.3);background:transparent;color:#fff;font:bold 15px sans-serif;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#l4set .modes button.on{background:#ffd24a;color:#1b2a3a;border-color:#ffd24a}
+#l4set label.zoom{display:block;margin-top:16px;font-size:15px}
+#l4set input[type=range]{display:block;width:100%;margin-top:10px;height:36px;touch-action:pan-x}
+#l4set .done{margin-top:16px;width:100%;min-height:48px;border:0;border-radius:12px;background:#4f7a3a;color:#fff;font:bold 18px sans-serif;touch-action:manipulation}
 `;
   document.head.appendChild(s);
 }
 
+const CAM_KEY = 'guru-run-l4-cam';
+function readCam() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CAM_KEY) || '{}');
+    const mode = raw.mode === 'near' ? 'near' : 'far';
+    let zoom = Number(raw.zoom);
+    if (!Number.isFinite(zoom)) zoom = 100;
+    zoom = Math.round(THREE.MathUtils.clamp(zoom, 60, 150));
+    return { mode, zoom };
+  } catch {
+    return { mode: 'far', zoom: 100 };
+  }
+}
+function writeCam(cam) {
+  try { localStorage.setItem(CAM_KEY, JSON.stringify({ mode: cam.mode, zoom: cam.zoom })); } catch { /* private mode */ }
+}
+
+/** Frame a preview camera to the model's current world bounds (after its own scale). */
+function framePreviewCamera(cam, model, margin = 1.28) {
+  model.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(model);
+  if (box.isEmpty()) return null;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const vFov = THREE.MathUtils.degToRad(cam.fov);
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(0.2, cam.aspect));
+  const halfH = Math.max(size.y, 0.001) * 0.5 * margin;
+  const halfW = Math.max(size.x, size.z, 0.001) * 0.5 * margin;
+  const dist = Math.max(halfH / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2));
+  cam.position.set(center.x, center.y, center.z + dist);
+  cam.near = Math.max(0.01, dist * 0.02);
+  cam.far = dist * 4 + size.length() + 2;
+  cam.lookAt(center);
+  cam.updateProjectionMatrix();
+  return { center, dist, size };
+}
+
 function startPreview(canvas, gltf) {
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  const fit = () => {
-    const w = canvas.clientWidth || 280;
-    const h = canvas.clientHeight || 180;
-    renderer.setSize(w, h, false);
-    cam.aspect = w / Math.max(1, h);
-    cam.updateProjectionMatrix();
-  };
   const scene = new THREE.Scene();
-  const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.35));
+  const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 80);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.4));
   const dir = new THREE.DirectionalLight(0xfff1d2, 1.8);
   dir.position.set(1.5, 2.4, 3);
   scene.add(dir);
@@ -675,26 +716,47 @@ function startPreview(canvas, gltf) {
   restoreBind(model);
   model.rotation.set(0, 0, 0);
   model.position.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
   scene.add(model);
   model.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(model);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const dist = Math.max(size.y, size.x, size.z) * 1.55;
-  cam.position.set(center.x + dist * 0.15, center.y, center.z + dist);
-  cam.lookAt(center);
-  fit();
+  const resize = () => {
+    const w = canvas.clientWidth || canvas.width || 280;
+    const h = canvas.clientHeight || canvas.height || 248;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.setSize(w, h, false);
+    cam.aspect = w / Math.max(1, h);
+    cam.updateProjectionMatrix();
+  };
+  resize();
+  framePreviewCamera(cam, model);
   const mixer = new THREE.AnimationMixer(model);
   const idle = findClip(gltf.animations, ['idle']);
   if (idle) mixer.clipAction(idle).play();
   let alive = true;
   let last = performance.now();
+  let smoothDist = 0;
+  let smoothY = 0;
+  let haveSmooth = false;
+  const onResize = () => resize();
+  window.addEventListener('resize', onResize);
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => resize()) : null;
+  ro?.observe(canvas);
   const loop = (now) => {
     if (!alive) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     mixer.update(dt);
-    model.rotation.y += dt * 0.4;
+    model.rotation.y += dt * 0.35;
+    const framed = framePreviewCamera(cam, model);
+    if (framed) {
+      if (!haveSmooth) { smoothDist = framed.dist; smoothY = framed.center.y; haveSmooth = true; }
+      else {
+        smoothDist += (framed.dist - smoothDist) * 0.18;
+        smoothY += (framed.center.y - smoothY) * 0.18;
+      }
+      cam.position.set(framed.center.x, smoothY, framed.center.z + smoothDist);
+      cam.lookAt(framed.center.x, smoothY, framed.center.z);
+    }
     renderer.render(scene, cam);
     requestAnimationFrame(loop);
   };
@@ -702,6 +764,8 @@ function startPreview(canvas, gltf) {
   return {
     stop() {
       alive = false;
+      window.removeEventListener('resize', onResize);
+      ro?.disconnect();
       mixer.stopAllAction();
       scene.remove(model);
       model.rotation.set(0, 0, 0);
@@ -784,7 +848,50 @@ export async function bootLevel4(api) {
   let rider = null;
   let eng = null;
   let last = performance.now();
+  const camSet = readCam();
+  let camHold = '';
   camPos.set(0, 3.2, -4);
+
+  function applyChase(dt) {
+    const gp = B.root.position;
+    const zoom = camSet.zoom;
+    const mul = 100 / zoom;
+    const key = camSet.mode + ':' + zoom;
+    const changed = key !== camHold;
+    camHold = key;
+    const snap = changed && !(camSet.mode !== 'near' && zoom === 100);
+    // Daleko at 100% is the original chase shot, unchanged.
+    if (camSet.mode !== 'near' && zoom === 100) {
+      const back = tmp.set(Math.sin(heading) * 6.2, 2.9, Math.cos(heading) * 6.2).add(gp);
+      camPos.lerp(back, 1 - Math.pow(0.01, dt));
+      camera.position.copy(camPos);
+      camera.lookAt(gp.x, gp.y + 1.5, gp.z + 3);
+      camera.fov += (58 + speed * 1.1 - camera.fov) * Math.min(1, dt * 3);
+      camera.updateProjectionMatrix();
+      return;
+    }
+    const near = camSet.mode === 'near';
+    const dist = (near ? 3.2 : 6.2) * mul;
+    const height = near ? 1.72 : 2.9;
+    const lookY = near ? 1.22 : 1.5;
+    const fovBase = near ? 42 : 58;
+    const fovKick = near ? 0.2 : 1.1;
+    if (near) {
+      const fx = -Math.sin(heading);
+      const fz = -Math.cos(heading);
+      const lookA = 0.35;
+      camPos.lerp(tmp.set(gp.x - fx * dist, gp.y + height, gp.z - fz * dist), snap ? 1 : Math.min(1, dt * 45));
+      camera.position.copy(camPos);
+      camera.lookAt(gp.x + fx * lookA, gp.y + lookY, gp.z + fz * lookA);
+    } else {
+      const back = tmp.set(Math.sin(heading) * dist, height, Math.cos(heading) * dist).add(gp);
+      camPos.lerp(back, snap ? 1 : 1 - Math.pow(0.01, dt));
+      camera.position.copy(camPos);
+      camera.lookAt(gp.x, gp.y + lookY, gp.z + 3 * mul);
+    }
+    camera.fov += (fovBase + speed * fovKick - camera.fov) * Math.min(1, dt * 3);
+    camera.updateProjectionMatrix();
+  }
 
   const elB = document.getElementById('bones');
   const elL = document.getElementById('lives');
@@ -808,6 +915,9 @@ export async function bootLevel4(api) {
     started: racing, picker: !racing && !done, x: B.root.position.x, z: B.root.position.z,
     y: B.root.position.y, speed, hits, done, raceT, len: L4_LEN, finishT,
     pose: rider?.poseKind || null, jump: rider?.jumpName || null, obs: obs.length,
+    cam: camSet.mode, zoom: camSet.zoom,
+    camDist: camera.position.distanceTo(B.root.position),
+    camY: camera.position.y, camAhead: B.root.position.z - camera.position.z, fov: camera.fov,
   });
   window.__l4 = state;
   window.__l4obs = obs;
@@ -823,6 +933,8 @@ export async function bootLevel4(api) {
     if (btns) btns.style.display = 'none';
     const end = document.getElementById('l4end');
     if (end) end.style.display = 'block';
+    document.getElementById('l4setBtn')?.style.setProperty('display', 'none');
+    document.getElementById('l4set')?.classList.remove('on');
     over.classList.add('on');
     if (eng) eng.g.gain.value = 0;
   }
@@ -937,12 +1049,7 @@ export async function bootLevel4(api) {
       finishT += dt;
       if (finishT > 1.5) showResults();
     }
-    const back = tmp.set(Math.sin(heading) * 6.2, 2.9, Math.cos(heading) * 6.2).add(gp);
-    camPos.lerp(back, 1 - Math.pow(0.01, dt));
-    camera.position.copy(camPos);
-    camera.lookAt(gp.x, gp.y + 1.5, gp.z + 3);
-    camera.fov += (58 + speed * 1.1 - camera.fov) * Math.min(1, dt * 3);
-    camera.updateProjectionMatrix();
+    applyChase(dt);
     sun.position.set(gp.x + 8, 18, gp.z + 6);
     sun.target.position.copy(gp);
     if (eng) {
@@ -971,6 +1078,7 @@ export async function bootLevel4(api) {
         </button>
         <label class="card" id="l4cardC">
           <input id="l4file" type="file" accept=".glb,model/gltf-binary" />
+          <canvas id="l4prevC" width="320" height="280" hidden></canvas>
           <b>Nahrát vlastní GLB</b>
           <small id="l4fileName">klipy Idle, Walk, Run, Jump</small>
         </label>
@@ -980,6 +1088,60 @@ export async function bootLevel4(api) {
       <p class="err" id="l4err"></p>
     </div>`;
   document.body.appendChild(root);
+  const stage = document.getElementById('stage');
+  const setBtn = document.createElement('button');
+  setBtn.id = 'l4setBtn';
+  setBtn.type = 'button';
+  setBtn.textContent = 'Nastavení';
+  const setPanel = document.createElement('div');
+  setPanel.id = 'l4set';
+  setPanel.innerHTML = `
+    <div class="sheet" role="dialog" aria-label="Nastavení">
+      <h3>Nastavení</h3>
+      <p class="k">Kamera</p>
+      <div class="modes" role="radiogroup" aria-label="Kamera">
+        <button type="button" data-cam="far" role="radio">Daleko (výchozí)</button>
+        <button type="button" data-cam="near" role="radio">Blízko</button>
+      </div>
+      <label class="zoom">Přiblížení <span id="l4zoomVal"></span>
+        <input id="l4zoom" type="range" min="60" max="150" step="1" value="${camSet.zoom}" aria-label="Přiblížení kamery" />
+      </label>
+      <button type="button" class="done" id="l4setClose">Hotovo</button>
+    </div>`;
+  stage.appendChild(setBtn);
+  document.body.appendChild(setPanel);
+  const zoomInput = setPanel.querySelector('#l4zoom');
+  const zoomVal = setPanel.querySelector('#l4zoomVal');
+  const syncCamUi = () => {
+    setPanel.querySelectorAll('[data-cam]').forEach((b) => {
+      const on = b.getAttribute('data-cam') === camSet.mode;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    zoomInput.value = String(camSet.zoom);
+    zoomVal.textContent = camSet.zoom + ' %';
+  };
+  syncCamUi();
+  setBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); setPanel.classList.add('on'); });
+  setPanel.querySelector('#l4setClose').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); setPanel.classList.remove('on'); });
+  setPanel.addEventListener('pointerdown', (e) => { if (e.target === setPanel) { e.preventDefault(); setPanel.classList.remove('on'); } });
+  setPanel.querySelector('.sheet').addEventListener('pointerdown', (e) => e.stopPropagation());
+  setPanel.querySelectorAll('[data-cam]').forEach((b) => {
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      camSet.mode = b.getAttribute('data-cam') === 'near' ? 'near' : 'far';
+      writeCam(camSet);
+      syncCamUi();
+    });
+  });
+  const onZoom = () => {
+    camSet.zoom = Math.round(THREE.MathUtils.clamp(Number(zoomInput.value) || 100, 60, 150));
+    writeCam(camSet);
+    zoomVal.textContent = camSet.zoom + ' %';
+  };
+  zoomInput.addEventListener('input', onZoom);
+  zoomInput.addEventListener('pointerdown', (e) => e.stopPropagation());
   const cardZ = root.querySelector('#l4cardZ');
   const cardC = root.querySelector('#l4cardC');
   const file = root.querySelector('#l4file');
@@ -992,7 +1154,14 @@ export async function bootLevel4(api) {
   let customName = '';
   let bundled = null;
   let preview = null;
+  let customPreview = null;
   let customGltf = null;
+  const canvasC = root.querySelector('#l4prevC');
+  function showCustomPreview(gltf) {
+    if (customPreview) { customPreview.stop(); customPreview = null; }
+    canvasC.hidden = false;
+    customPreview = startPreview(canvasC, gltf);
+  }
 
   const select = (mode) => {
     choice = mode;
@@ -1014,6 +1183,7 @@ export async function bootLevel4(api) {
       customBuf = buf;
       customName = f.name;
       fileName.textContent = f.name;
+      showCustomPreview(customGltf);
       select('custom');
       const saved = storeChoice('custom', f.name, buf);
       if (!saved) err.textContent = 'Soubor je moc velký na uložení — platí jen pro tuhle jízdu.';
@@ -1032,6 +1202,7 @@ export async function bootLevel4(api) {
       customName = saved.name;
       customGltf = await loadGLB(customBuf);
       fileName.textContent = saved.name || 'uložený GLB';
+      showCustomPreview(customGltf);
       select('custom');
     } catch (e) {
       console.error(e);
@@ -1051,6 +1222,7 @@ export async function bootLevel4(api) {
 
   const begin = async (gltf, mode, name, buffer) => {
     if (preview) { preview.stop(); preview = null; }
+    if (customPreview) { customPreview.stop(); customPreview = null; }
     root.remove();
     mountRider(gltf);
     storeChoice(mode, name, buffer);
